@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/* -------------------- ENUMS -------------------- */
+
+enum Currency {
+  AFN
+  USD
+}
+
+enum BillStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum StockSourceType {
+  MANUAL
+  CONTAINER
+  BILL
+}
+
+/* -------------------- MODELS -------------------- */
+
+model Customer {
+  id               String   @id @default(uuid())
+  name             String   @unique
+  phoneNumber      String
+  address          String?
+
+  totalDebtAmount  Decimal  @default(0)
+  totalPaidAmount  Decimal  @default(0)
+  initialDebtAFN   Decimal  @default(0)
+  initialDebtUSD   Decimal  @default(0)
+
+  note             String?
+  createdAt        DateTime @default(now())
+
+  bills            Bill[]
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  products  Product[]
+}
+
+model Product {
+  id                     String   @id @default(uuid())
+  name                   String
+
+  currentPricePerPackage Decimal
+  currencyType           Currency
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  billItems              BillItem[]
+  stockMovements         Stock[]
+  categoryId             String?
+  category               Category? @relation(fields: [categoryId], references: [id])
+}
+
+model Bill {
+  id                    String   @id @default(uuid())
+  customerId            String
+  billNumber            String?
+  status                BillStatus @default(UNPAID)
+  sherkatStock          Boolean    @default(false)
+  mandawiCheck          Boolean    @default(false)
+  mandawiCheckNumber    String?
+  billDate              DateTime
+  note                  String?
+  createdAt             DateTime @default(now())
+
+  customer              Customer  @relation(fields: [customerId], references: [id])
+  items                 BillItem[]
+  payments              Payment[]
+  stockMovements         Stock[]
+
+  @@index([customerId])
+}
+
+model BillItem {
+  id                    String   @id @default(uuid())
+  billId                String
+  productId             String
+  numberOfPackages      Int
+  unitPrice             Decimal
+  currency              Currency
+  totalAmount           Decimal
+
+  bill                  Bill     @relation(fields: [billId], references: [id])
+  product               Product  @relation(fields: [productId], references: [id])
+
+  @@index([billId])
+  @@index([productId])
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  billId        String
+  paymentNumber String?
+
+  amountPaid    Decimal
+  currency      Currency
+
+  paymentDate   DateTime @default(now())
+  paymentMethod String
+  note          String?
+
+  bill          Bill @relation(fields: [billId], references: [id])
+
+  @@index([billId])
+}
+
+model Stock {
+  id                String            @id @default(uuid())
+  productId         String
+  billId            String?
+  quantityChange    Int
+  movementType      StockMovementType
+  sourceType        StockSourceType
+  isContainer       Boolean           @default(false)
+  containerNumber   String?
+  driverName        String?
+  billOfLadingNumber String?
+  arrivalDate       DateTime?
+  leakPackages      Int?
+  note              String?
+  createdAt         DateTime          @default(now())
+
+  product           Product           @relation(fields: [productId], references: [id])
+  bill              Bill?             @relation(fields: [billId], references: [id])
+
+  @@index([productId])
+  @@index([billId])
+}

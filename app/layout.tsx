@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Header from "../components/Header";
+import Navbar from "../components/Navbar";
 import "./globals.css";
+import Providers from "./providers";
+import { Toaster } from "react-hot-toast";
+import AppAnimations from "../components/ui/AppAnimations";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +32,24 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <Providers>
+          <div className="page-layout min-h-screen">
+            {Header && (
+              <header className="page-header">
+                <Header />
+              </header>
+            )}
+            {Navbar && (
+              <aside className="page-sidebar">
+                <Navbar />
+              </aside>
+            )}
+            <main className="page-main">
+              <Toaster position="bottom-right" reverseOrder={false} />
+              <AppAnimations>{children}</AppAnimations>
+            </main>
+          </div>
+        </Providers>
       </body>
     </html>
   );

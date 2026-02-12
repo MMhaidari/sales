@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Customer" ADD COLUMN     "initialDebtAFN" DECIMAL(65,30) NOT NULL DEFAULT 0,
+ADD COLUMN     "initialDebtUSD" DECIMAL(65,30) NOT NULL DEFAULT 0;
