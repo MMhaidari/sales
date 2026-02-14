@@ -18,6 +18,7 @@ const Navbar: React.FC<NavbarProps> = ({ links, rightContent }) => {
       { label: t("nav.categories"), href: "/categories" },
       { label: t("nav.products"), href: "/products" },
       { label: t("nav.customers"), href: "/customers" },
+      { label: t("debts.title"), href: "/debts" },
       { label: t("nav.stocks"), href: "/stocks" },
       { label: t("nav.bills"), href: "/bills" },
       { label: t("nav.payments"), href: "/payments" },

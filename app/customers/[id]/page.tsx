@@ -8,7 +8,7 @@ import { useUpdateBillMutation } from "@/redux/api/billsApi";
 import { useGetProductsQuery } from "@/redux/api/productApi";
 import { customersApi } from "@/redux/api/customersApi";
 import { useDispatch } from "react-redux";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import toast from "react-hot-toast";
 import { formatDualDate } from "@/lib/dateFormat";
 import { useLanguage } from "@/components/ui/LanguageProvider";
@@ -104,12 +104,6 @@ export default function CustomerDetailPage() {
     setEditItems((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  useEffect(() => {
-    if (!customer || editDebtOpen) return;
-    setInitialDebtAFNInput(customer.initialDebtAFN ?? "0");
-    setInitialDebtUSDInput(customer.initialDebtUSD ?? "0");
-  }, [customer, editDebtOpen]);
-
   if (!id || isLoading) {
     return (
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
@@ -160,6 +154,141 @@ export default function CustomerDetailPage() {
   const paidUSD = customer.paidUSD ?? "0";
   const bills = customer.bills ?? [];
 
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const handlePrintProfile = async () => {
+    const { default: printJS } = await import("print-js");
+    const customerName = customer.name;
+    const addressValue = customer.address ?? "--";
+    const phoneValue = customer.phoneNumber ?? customer.phone ?? "--";
+
+    const paymentsHtml = payments
+      .map((payment) => {
+        const label = payment.paymentNumber
+          ? `${t("customer.paymentNumber")} ${payment.paymentNumber}`
+          : `${t("payments.paymentLabel")} ${payment.id.slice(0, 6)}`;
+        return `
+          <tr>
+            <td>${escapeHtml(label)}</td>
+            <td>${escapeHtml(formatDate(payment.paymentDate))}</td>
+            <td>${escapeHtml(payment.currency)}</td>
+            <td>${escapeHtml(payment.amountPaid)}</td>
+            <td>${escapeHtml(payment.paymentMethod)}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const billsHtml = bills
+      .map((bill) => {
+        const billLabel = bill.billNumber
+          ? `${t("bills.billLabel")} #${bill.billNumber}`
+          : `${t("bills.billLabel")} #${bill.id.slice(0, 6)}`;
+        const itemsHtml = bill.items
+          .map((item) => {
+            const name = item.product?.name || t("stocks.productLabel");
+            return `
+              <tr>
+                <td>${escapeHtml(name)}</td>
+                <td>${item.numberOfPackages}</td>
+                <td>${escapeHtml(item.unitPrice)}</td>
+                <td>${escapeHtml(item.currency)}</td>
+                <td>${escapeHtml(item.totalAmount)}</td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        return `
+          <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <div style="font-weight:600;">${escapeHtml(billLabel)}</div>
+              <div style="font-size:12px;color:#64748b;">${escapeHtml(formatDate(bill.billDate))}</div>
+            </div>
+            <div style="font-size:12px;color:#475569;margin-bottom:8px;">
+              ${escapeHtml(t("customer.totalAFN"))}: ${escapeHtml(bill.totalAFN)} | ${escapeHtml(t("customer.totalUSD"))}: ${escapeHtml(bill.totalUSD)}
+            </div>
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("billPrint.item"))}</th>
+                  <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("billPrint.packages"))}</th>
+                  <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("billPrint.unitPrice"))}</th>
+                  <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("billPrint.currency"))}</th>
+                  <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("billPrint.total"))}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })
+      .join("");
+
+    const html = `
+      <div style="font-family:'Segoe UI', Arial, sans-serif;color:#0f172a;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <div style="font-size:20px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(t("brand.title"))}</div>
+            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("brand.subtitle"))}</div>
+          </div>
+          <div style="border:1px solid #e2e8f0;padding:4px 10px;border-radius:999px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#334155;">${escapeHtml(t("customer.printTitle"))}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+          <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("customer.detailLabel"))}</div>
+            <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(customerName)}</div>
+            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("customer.phoneLabel"))}: ${escapeHtml(phoneValue)}</div>
+            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("customer.addressLabel"))}: ${escapeHtml(addressValue)}</div>
+          </div>
+          <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("customer.debt"))}</div>
+            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("customer.totalAFN"))}: ${escapeHtml(debtAFN)}</div>
+            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("customer.totalUSD"))}: ${escapeHtml(debtUSD)}</div>
+            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("customer.paid"))}: AFN ${escapeHtml(paidAFN)} | USD ${escapeHtml(paidUSD)}</div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.2em;color:#94a3b8;margin-bottom:8px;">${escapeHtml(t("customer.payments"))}</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("payments.paymentLabel"))}</th>
+                <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("bills.billDate"))}</th>
+                <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("customer.currency"))}</th>
+                <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("customer.amountLabel"))}</th>
+                <th style="border:1px solid #e2e8f0;padding:6px;text-align:left;background:#f8fafc;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:#475569;">${escapeHtml(t("payments.recordPayment"))}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${paymentsHtml || `<tr><td colspan="5" style="border:1px solid #e2e8f0;padding:8px;">${escapeHtml(t("customer.noPayments"))}</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:18px;">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.2em;color:#94a3b8;margin-bottom:8px;">${escapeHtml(t("customer.customerBills"))}</div>
+          ${billsHtml || `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">${escapeHtml(t("customer.noBills"))}</div>`}
+        </div>
+      </div>
+    `;
+
+    printJS({
+      printable: html,
+      type: "raw-html",
+    });
+  };
+
   const parseNonNegative = (value: string) => {
     if (!value.trim()) return 0;
     const parsed = Number(value);
@@ -178,7 +307,7 @@ export default function CustomerDetailPage() {
     try {
       await updateCustomer({
         id,
-        data: { initialDebtAFN: nextAFN, initialDebtUSD: nextUSD },
+        data: { initialDebtAFN: String(nextAFN), initialDebtUSD: String(nextUSD) },
       }).unwrap();
 
       toast.success(t("customer.saveDebt"));
@@ -341,12 +470,21 @@ export default function CustomerDetailPage() {
             </p>
           )}
         </div>
-        <Link
-          href="/customers"
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700"
-        >
-          {t("customer.backToCustomers")}
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handlePrintProfile}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+          >
+            {t("customer.printProfile")}
+          </button>
+          <Link
+            href="/customers"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700"
+          >
+            {t("customer.backToCustomers")}
+          </Link>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -568,11 +706,11 @@ export default function CustomerDetailPage() {
             </div>
           ) : (
             bills.map((bill) => (
-              <div
+              <details
                 key={bill.id}
-                className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4"
+                className="rounded-2xl border border-slate-100 bg-slate-50"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <summary className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 text-left cursor-pointer list-none">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">
                       {bill.billNumber
@@ -604,42 +742,51 @@ export default function CustomerDetailPage() {
                     )}
                     <span>{t("customer.totalAFN")}: {bill.totalAFN}</span>
                     <span>{t("customer.totalUSD")}: {bill.totalUSD}</span>
+                    <span className="text-xs text-slate-500">
+                      {bill.items.length} {t("common.items")}
+                    </span>
                     {bill.note !== "Initial debt adjustment" && (
                       <button
                         type="button"
-                        onClick={() => openEditBill(bill)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          openEditBill(bill);
+                        }}
                         className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-300"
                       >
                         {t("common.edit")}
                       </button>
                     )}
                   </div>
-                </div>
+                </summary>
 
-                <div className="mt-3 space-y-2">
-                  {bill.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {item.product?.name || t("stocks.productLabel")}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {item.numberOfPackages} {t("stocks.packages")} x {item.unitPrice}
-                        </p>
+                <div className="border-t border-slate-100 px-4 py-3">
+                  <div className="space-y-2">
+                    {bill.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {item.product?.name || t("stocks.productLabel")}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {item.numberOfPackages} {t("stocks.packages")} x {item.unitPrice}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold uppercase tracking-wide text-slate-500">
+                            {item.currency}
+                          </span>
+                          <span>{t("common.total")}: {item.totalAmount}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold uppercase tracking-wide text-slate-500">
-                          {item.currency}
-                        </span>
-                        <span>{t("common.total")}: {item.totalAmount}</span>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </details>
             ))
           )}
         </div>

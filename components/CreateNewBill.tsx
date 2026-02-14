@@ -1,14 +1,16 @@
 
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useGetCustomersQuery } from "@/redux/api/customersApi";
 import { useGetProductsQuery } from "@/redux/api/productApi";
 import { useAddBillMutation } from "@/redux/api/billsApi";
+import { useGetStockSummaryQuery } from "@/redux/api/stocksApi";
 import { customersApi } from "@/redux/api/customersApi";
 import { useDispatch } from "react-redux";
 import { useLanguage } from "@/components/ui/LanguageProvider";
+import { formatDualDate } from "@/lib/dateFormat";
 
 type BillProduct = {
     productId: string;
@@ -16,10 +18,19 @@ type BillProduct = {
 };
 
 type Bill = {
+    id: string;
     customerId: string;
     items: BillProduct[];
     totalAFN: string;
     totalUSD: string;
+    billNumber?: string;
+    billDate: string;
+    status: BillStatus;
+    sherkatStock: boolean;
+    mandawiCheck: boolean;
+    mandawiCheckNumber?: string | null;
+    paidAFN?: string;
+    paidUSD?: string;
 };
 
 type BillStatus = "UNPAID" | "PARTIAL" | "PAID";
@@ -30,6 +41,11 @@ const CreateNewBill: React.FC = () => {
         useGetCustomersQuery();
     const { data: products = [], isLoading: isProductsLoading } =
         useGetProductsQuery();
+    const {
+        data: stockSummary = [],
+        isLoading: isStockLoading,
+        isError: isStockError,
+    } = useGetStockSummaryQuery();
     const [addBill, { isLoading: isSaving }] = useAddBillMutation();
     const dispatch = useDispatch();
     const [selectedCustomer, setSelectedCustomer] = useState<string>("");
@@ -44,17 +60,28 @@ const CreateNewBill: React.FC = () => {
         { productId: "", numberOfPackages: 0 },
     ]);
     const [bills, setBills] = useState<Bill[]>([]);
+    const [printBill, setPrintBill] = useState<Bill | null>(null);
+    const [isPrinting, setIsPrinting] = useState(false);
 
     const productsById = useMemo(() => {
         return new Map(products.map((product) => [product.id, product]));
     }, [products]);
 
-    const getItemTotal = (productId: string, numberOfPackages: number) => {
-        const product = productsById.get(productId);
-        if (!product) return 0;
-        const unitPrice = Number(product.currentPricePerPackage);
-        return Number.isFinite(unitPrice) ? unitPrice * numberOfPackages : 0;
-    };
+    const stockByProductId = useMemo(() => {
+        return new Map(
+            stockSummary.map((stock) => [stock.productId, stock.packagesAvailable])
+        );
+    }, [stockSummary]);
+
+    const getItemTotal = useCallback(
+        (productId: string, numberOfPackages: number) => {
+            const product = productsById.get(productId);
+            if (!product) return 0;
+            const unitPrice = Number(product.currentPricePerPackage);
+            return Number.isFinite(unitPrice) ? unitPrice * numberOfPackages : 0;
+        },
+        [productsById]
+    );
 
     const handleRowChange = (
         index: number,
@@ -87,6 +114,37 @@ const CreateNewBill: React.FC = () => {
         if (!billNumber.trim()) {
             toast.error(t("toast.billNumberRequired"));
             return;
+        }
+
+        if (!sherkatStock && !isStockLoading && !isStockError) {
+            const requestedByProductId = new Map<string, number>();
+            for (const item of filteredItems) {
+                requestedByProductId.set(
+                    item.productId,
+                    (requestedByProductId.get(item.productId) ?? 0) +
+                        item.numberOfPackages
+                );
+            }
+
+            const insufficient = Array.from(requestedByProductId.entries())
+                .map(([productId, requested]) => {
+                    const available = stockByProductId.get(productId) ?? 0;
+                    return { productId, requested, available };
+                })
+                .filter((item) => item.requested > item.available);
+
+            if (insufficient.length > 0) {
+                const details = insufficient
+                    .map((item) => {
+                        const name =
+                            productsById.get(item.productId)?.name ??
+                            t("common.unknown");
+                        return `${name} (${item.available}/${item.requested})`;
+                    })
+                    .join(", ");
+                toast.error(`${t("toast.insufficientStock")}: ${details}`);
+                return;
+            }
         }
 
         const parsePaid = (value: string) => {
@@ -154,6 +212,7 @@ const CreateNewBill: React.FC = () => {
             setBills((prev) => [
                 ...prev,
                 {
+                    id: created.id,
                     customerId: created.customerId,
                     items: created.items.map((item) => ({
                         productId: item.productId,
@@ -161,6 +220,14 @@ const CreateNewBill: React.FC = () => {
                     })),
                     totalAFN: savedTotalAFN.toString(),
                     totalUSD: savedTotalUSD.toString(),
+                    billNumber: created.billNumber ?? undefined,
+                    billDate: created.billDate,
+                    status: created.status,
+                    sherkatStock: created.sherkatStock,
+                    mandawiCheck: created.mandawiCheck,
+                    mandawiCheckNumber: created.mandawiCheckNumber ?? null,
+                    paidAFN: billStatus === "UNPAID" ? "0" : String(paidAFNValue ?? 0),
+                    paidUSD: billStatus === "UNPAID" ? "0" : String(paidUSDValue ?? 0),
                 },
             ]);
 
@@ -215,6 +282,137 @@ const CreateNewBill: React.FC = () => {
         },
         { totalAFN: 0, totalUSD: 0 }
     );
+
+    useEffect(() => {
+        if (!printBill) return;
+        let cancelled = false;
+        const runPrint = async () => {
+            const { default: printJS } = await import("print-js");
+            if (cancelled) return;
+            setIsPrinting(true);
+            const escapeHtml = (value: string) =>
+                value
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/\"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
+
+            const customerName =
+                customers.find((c) => c.id === printBill.customerId)?.name ??
+                t("common.unknown");
+
+            const rowsHtml = printBill.items
+                .map((item, index) => {
+                    const product = productsById.get(item.productId);
+                    const total = getItemTotal(
+                        item.productId,
+                        item.numberOfPackages
+                    );
+                    return `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${escapeHtml(product?.name ?? t("common.unknown"))}</td>
+                            <td>${item.numberOfPackages}</td>
+                            <td>${escapeHtml(String(product?.currentPricePerPackage ?? "0"))}</td>
+                            <td>${escapeHtml(product?.currencyType ?? "--")}</td>
+                            <td>${total.toLocaleString()}</td>
+                        </tr>
+                    `;
+                })
+                .join("");
+
+            const html = `
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                        <div>
+                            <div style="font-size:20px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(t("brand.title"))}</div>
+                            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("brand.subtitle"))}</div>
+                        </div>
+                        <div style="border:1px solid #e2e8f0;padding:4px 10px;border-radius:999px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#334155;">${escapeHtml(t("billPrint.title"))}</div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                        <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.customer"))}</div>
+                            <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(customerName)}</div>
+                            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.customerId"))}: ${escapeHtml(printBill.customerId.slice(0, 8))}</div>
+                        </div>
+                        <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.billNumber"))}</div>
+                            <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(printBill.billNumber ?? "--")}</div>
+                            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.date"))}: ${escapeHtml(formatDualDate(printBill.billDate))}</div>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                        <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.status"))}</div>
+                            <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(printBill.status)}</div>
+                            <div style="font-size:12px;color:#64748b;">${escapeHtml(printBill.sherkatStock ? t("billPrint.sherkatStock") : t("billPrint.systemStock"))}</div>
+                        </div>
+                        <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.mandawi"))}</div>
+                            <div style="font-size:14px;font-weight:600;margin-top:6px;">
+                                ${escapeHtml(
+                                    printBill.mandawiCheck
+                                        ? printBill.mandawiCheckNumber
+                                            ? `${t("billPrint.checkNumber")} #${printBill.mandawiCheckNumber}`
+                                            : t("billPrint.hesabMandawi")
+                                        : t("billPrint.noMandawi")
+                                )}
+                            </div>
+                            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.billId"))}: ${escapeHtml(printBill.id.slice(0, 8))}</div>
+                        </div>
+                    </div>
+
+                    <table style="width:100%;border-collapse:collapse;margin-top:12px;">
+                        <thead>
+                            <tr>
+                                <th style="border:1px solid #e2e8f0;padding:8px;text-align:left;background:#f8fafc;text-transform:uppercase;letter-spacing:0.2em;font-size:10px;color:#475569;">#</th>
+                                <th style="border:1px solid #e2e8f0;padding:8px;text-align:left;background:#f8fafc;text-transform:uppercase;letter-spacing:0.2em;font-size:10px;color:#475569;">${escapeHtml(t("billPrint.item"))}</th>
+                                <th style="border:1px solid #e2e8f0;padding:8px;text-align:left;background:#f8fafc;text-transform:uppercase;letter-spacing:0.2em;font-size:10px;color:#475569;">${escapeHtml(t("billPrint.packages"))}</th>
+                                <th style="border:1px solid #e2e8f0;padding:8px;text-align:left;background:#f8fafc;text-transform:uppercase;letter-spacing:0.2em;font-size:10px;color:#475569;">${escapeHtml(t("billPrint.unitPrice"))}</th>
+                                <th style="border:1px solid #e2e8f0;padding:8px;text-align:left;background:#f8fafc;text-transform:uppercase;letter-spacing:0.2em;font-size:10px;color:#475569;">${escapeHtml(t("billPrint.currency"))}</th>
+                                <th style="border:1px solid #e2e8f0;padding:8px;text-align:left;background:#f8fafc;text-transform:uppercase;letter-spacing:0.2em;font-size:10px;color:#475569;">${escapeHtml(t("billPrint.total"))}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;">
+                        <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.totalAFN"))}: ${escapeHtml(printBill.totalAFN)}</div>
+                        <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.totalUSD"))}: ${escapeHtml(printBill.totalUSD)}</div>
+                        <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.paidAFN"))}: ${Number(printBill.paidAFN ?? 0).toLocaleString()}</div>
+                        <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.paidUSD"))}: ${Number(printBill.paidUSD ?? 0).toLocaleString()}</div>
+                        <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.balanceAFN"))}: ${(Number(printBill.totalAFN) - Number(printBill.paidAFN ?? 0)).toLocaleString()}</div>
+                        <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.balanceUSD"))}: ${(Number(printBill.totalUSD) - Number(printBill.paidUSD ?? 0)).toLocaleString()}</div>
+                    </div>
+                </div>
+            `;
+
+            setTimeout(() => {
+                if (cancelled) return;
+              printJS({
+                    printable: html,
+                    type: "raw-html",
+                    });
+                setIsPrinting(false);
+                setPrintBill(null);
+            }, 50);
+        };
+        runPrint();
+        return () => {
+            cancelled = true;
+        };
+    }, [customers, getItemTotal, printBill, productsById, t]);
+
+    const handlePrintBill = (bill: Bill) => {
+        if (isPrinting) return;
+        setPrintBill(bill);
+    };
 
     return (
         <div className="space-y-10">
@@ -602,9 +800,17 @@ const CreateNewBill: React.FC = () => {
                                     <p className="text-sm font-semibold text-slate-900">
                                         {customer?.name}
                                     </p>
-                                    <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                                         <span>{t("billCreate.afnTotal")}: {bill.totalAFN}</span>
                                         <span>{t("billCreate.usdTotal")}: {bill.totalUSD}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePrintBill(bill)}
+                                            disabled={isPrinting}
+                                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {t("billPrint.print")}
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="mt-3 grid gap-2">
@@ -639,6 +845,7 @@ const CreateNewBill: React.FC = () => {
                     })}
                 </div>
             </div>
+
         </div>
     );
 };

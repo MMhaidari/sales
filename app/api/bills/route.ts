@@ -153,6 +153,7 @@ export async function POST(req: NextRequest) {
 			where: { id: { in: productIds } },
 			select: {
 				id: true,
+				name: true,
 				currentPricePerPackage: true,
 				currencyType: true,
 			},
@@ -163,6 +164,51 @@ export async function POST(req: NextRequest) {
 			if (!productMap.has(item.productId)) {
 				return NextResponse.json(
 					{ error: "Product not found for one or more items" },
+					{ status: 400 }
+				);
+			}
+		}
+
+		if (!Boolean(sherkatStock)) {
+			const requestedByProductId = new Map<string, number>();
+			for (const item of normalizedItems) {
+				requestedByProductId.set(
+					item.productId,
+					(requestedByProductId.get(item.productId) ?? 0) +
+						item.numberOfPackages
+				);
+			}
+
+			const stockBalances = await prisma.stock.groupBy({
+				by: ["productId"],
+				where: { productId: { in: productIds } },
+				_sum: { quantityChange: true },
+			});
+
+			const stockByProductId = new Map(
+				stockBalances.map((entry) => [
+					entry.productId,
+					entry._sum.quantityChange ?? 0,
+				])
+			);
+
+			const insufficient = Array.from(requestedByProductId.entries())
+				.map(([productId, requested]) => {
+					const available = stockByProductId.get(productId) ?? 0;
+					return { productId, requested, available };
+				})
+				.filter((item) => item.requested > item.available);
+
+			if (insufficient.length > 0) {
+				const details = insufficient
+					.map((item) => {
+						const product = productMap.get(item.productId);
+						const name = product?.name ?? item.productId;
+						return `${name} (${item.available}/${item.requested})`;
+					})
+					.join(", ");
+				return NextResponse.json(
+					{ error: `Insufficient stock for: ${details}` },
 					{ status: 400 }
 				);
 			}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useGetBillsQuery } from "@/redux/api/billsApi";
 import { useGetCustomersQuery } from "@/redux/api/customersApi";
+import { useGetProductsQuery } from "@/redux/api/productApi";
 import { formatDualDate } from "@/lib/dateFormat";
 import { useLanguage } from "@/components/ui/LanguageProvider";
 import Pagination from "@/components/ui/Pagination";
@@ -29,6 +30,7 @@ export default function BillsPage() {
 	const { data: bills = [], isLoading: billsLoading } = useGetBillsQuery();
 	const { data: customers = [], isLoading: customersLoading } =
 		useGetCustomersQuery();
+	const { data: products = [] } = useGetProductsQuery();
 
 	const [filter, setFilter] = useState<FilterKey>("today");
 	const [page, setPage] = useState(1);
@@ -39,6 +41,11 @@ export default function BillsPage() {
 	const customerById = useMemo(
 		() => new Map(customers.map((customer) => [customer.id, customer.name])),
 		[customers]
+	);
+
+	const productById = useMemo(
+		() => new Map(products.map((product) => [product.id, product.name])),
+		[products]
 	);
 
 	const filteredBills = useMemo(() => {
@@ -164,43 +171,73 @@ export default function BillsPage() {
 										: "bg-rose-50 text-rose-700 border-rose-200";
 
 							return (
-								<div
+								<details
 									key={bill.id}
-									className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+									className="rounded-2xl border border-slate-200 bg-slate-50"
 								>
-									<div>
-										<p className="text-sm font-semibold text-slate-900">
-										{t("bills.billLabel")} #{bill.billNumber ?? bill.id.slice(0, 6)}
-										</p>
-										<p className="text-xs text-slate-500">
-											{formatDate(bill.billDate)}
-										</p>
-										<p className="text-xs text-slate-500">
-											{t("bills.customer")}: {customerById.get(bill.customerId) ?? t("common.unknown")}
-										</p>
-									</div>
-									<div className="flex flex-wrap items-center gap-3 text-right">
-										<div className="text-sm font-semibold text-slate-700">
-											{totalAFN > 0 && <div>AFN {totalAFN.toLocaleString()}</div>}
-											{totalUSD > 0 && <div>USD {totalUSD.toLocaleString()}</div>}
+									<summary className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-left cursor-pointer list-none">
+										<div>
+											<p className="text-sm font-semibold text-slate-900">
+												{t("bills.billLabel")} #{bill.billNumber ?? bill.id.slice(0, 6)}
+											</p>
+											<p className="text-xs text-slate-500">
+												{formatDate(bill.billDate)}
+											</p>
+											<p className="text-xs text-slate-500">
+												{t("bills.customer")}: {customerById.get(bill.customerId) ?? t("common.unknown")}
+											</p>
 										</div>
-										{bill.sherkatStock && (
-											<span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-												{t("bills.sherkatStock")}
+										<div className="flex flex-wrap items-center gap-3 text-right">
+											<div className="text-sm font-semibold text-slate-700">
+												{totalAFN > 0 && <div>AFN {totalAFN.toLocaleString()}</div>}
+												{totalUSD > 0 && <div>USD {totalUSD.toLocaleString()}</div>}
+											</div>
+											{bill.sherkatStock && (
+												<span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+													{t("bills.sherkatStock")}
+												</span>
+											)}
+											{bill.mandawiCheck && (
+												<span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
+													{bill.mandawiCheckNumber ? t("bills.mandawiCheck") : t("bills.hesabMandawi")}
+												</span>
+											)}
+											<span
+												className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusColor}`}
+											>
+												{bill.status}
 											</span>
-										)}
-										{bill.mandawiCheck && (
-											<span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-600">
-												{bill.mandawiCheckNumber ? t("bills.mandawiCheck") : t("bills.hesabMandawi")}
+											<span className="text-xs text-slate-500">
+												{bill.items.length} {t("common.items")}
 											</span>
-										)}
-										<span
-											className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusColor}`}
-										>
-											{bill.status}
-										</span>
+										</div>
+									</summary>
+									<div className="border-t border-slate-200 px-4 py-3">
+										<div className="space-y-2">
+											{bill.items.map((item) => (
+												<div
+													key={item.id}
+													className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2"
+												>
+													<div>
+														<p className="text-sm font-semibold text-slate-900">
+															{productById.get(item.productId) ?? t("common.unknown")}
+														</p>
+														<p className="text-xs text-slate-500">
+															{item.numberOfPackages} {t("stocks.packages")} x {item.unitPrice}
+														</p>
+													</div>
+													<div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+														<span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold uppercase tracking-wide text-slate-500">
+															{item.currency}
+														</span>
+														<span>{t("common.total")}: {item.totalAmount}</span>
+													</div>
+												</div>
+											))}
+										</div>
 									</div>
-								</div>
+								</details>
 							);
 						})}
 				</div>

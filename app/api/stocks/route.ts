@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
             item &&
             typeof item.productId === "string" &&
             Number.isFinite(item.quantityChange) &&
-            item.quantityChange !== 0
+            item.quantityChange > 0
         )
         .map((item) => ({
           productId: item.productId,

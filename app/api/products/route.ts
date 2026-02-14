@@ -61,6 +61,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (Number(parsedPrice) <= 0) {
+      return NextResponse.json(
+        { error: "Price must be a positive number" },
+        { status: 400 }
+      );
+    }
+
     if (currencyType !== "AFN" && currencyType !== "USD") {
       return NextResponse.json(
         { error: "Currency must be AFN or USD" },
@@ -147,6 +154,13 @@ export async function PUT(req: NextRequest) {
       if (!Number.isFinite(parsedPrice)) {
         return NextResponse.json(
           { error: "Price must be a number" },
+          { status: 400 }
+        );
+      }
+
+      if (Number(parsedPrice) <= 0) {
+        return NextResponse.json(
+          { error: "Price must be a positive number" },
           { status: 400 }
         );
       }

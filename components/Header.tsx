@@ -7,26 +7,29 @@ import { useLanguage } from "@/components/ui/LanguageProvider";
 const Header: React.FC = () => {
     const { lang, setLang, t } = useLanguage();
 
-    const [theme, setTheme] = useState<"light" | "dark">(() => {
-        if (typeof window !== "undefined") {
-            const stored = window.localStorage.getItem("theme");
-            const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
-            return stored === "dark" || (!stored && prefersDark) ? "dark" : "light";
-        }
-        return "light";
-    });
+    const [theme, setTheme] = useState<"light" | "dark">("light");
 
     useEffect(() => {
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.classList.toggle("theme-dark", theme === "dark");
+        if (typeof window === "undefined") return;
+        const stored = window.localStorage.getItem("theme");
+        const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+        const next = stored === "dark" || (!stored && prefersDark) ? "dark" : "light";
+        setTheme(next);
+    }, []);
+
+    useEffect(() => {
+        if (typeof document !== "undefined") {
+            document.documentElement.dataset.theme = theme;
+            document.documentElement.classList.toggle("theme-dark", theme === "dark");
+        }
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("theme", theme);
+        }
     }, [theme]);
 
     const toggleTheme = () => {
         const next = theme === "dark" ? "light" : "dark";
         setTheme(next);
-        document.documentElement.dataset.theme = next;
-        document.documentElement.classList.toggle("theme-dark", next === "dark");
-        window.localStorage.setItem("theme", next);
     };
 
     const toggleLanguage = () => {
