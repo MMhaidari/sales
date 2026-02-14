@@ -23,9 +23,11 @@ const Navbar: React.FC<NavbarProps> = ({ links, rightContent }) => {
       { label: t("nav.bills"), href: "/bills" },
       { label: t("nav.payments"), href: "/payments" },
       { label: t("nav.reports"), href: "/reports" },
+      { label: t("nav.mandawiReport"), href: "/reports/mandawi" },
+      { label: t("nav.sherkatReport"), href: "/reports/sherkat" },
     ];
   return (
-    <aside className="h-full w-full border-r border-slate-200 bg-white/95 backdrop-blur flex flex-col">
+    <aside className="flex h-full min-h-screen w-full flex-col overflow-hidden border-r border-slate-200 bg-white/95 backdrop-blur">
       
       {/* Logo / Brand */}
       <div className="px-6 py-6 border-b border-slate-100">
@@ -41,7 +43,7 @@ const Navbar: React.FC<NavbarProps> = ({ links, rightContent }) => {
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-6">
+      <nav className="flex-1 overflow-y-auto px-4 py-6">
         <ul className="space-y-1">
           {resolvedLinks.map((link) => (
             <li key={link.href}>

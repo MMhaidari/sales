@@ -3,10 +3,12 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 export type BillItemInput = {
 	productId: string;
 	numberOfPackages: number;
+	unitPrice?: number;
 };
 
 export type CreateBillInput = {
-	customerId: string;
+	customerId?: string;
+	tempCustomerName?: string;
 	billNumber?: string;
 	status?: "UNPAID" | "PARTIAL" | "PAID";
 	sherkatStock?: boolean;
@@ -30,7 +32,8 @@ export type BillItem = {
 
 export type Bill = {
 	id: string;
-	customerId: string;
+	customerId?: string | null;
+	tempCustomerName?: string | null;
 	billNumber?: string | null;
 	status: "UNPAID" | "PARTIAL" | "PAID";
 	sherkatStock: boolean;

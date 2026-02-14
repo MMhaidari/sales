@@ -34,12 +34,17 @@ export default function CustomerDetailPage() {
   const { data: products = [], isLoading: isProductsLoading } = useGetProductsQuery();
 
   const [addPayment, { isLoading: isPaying }] = useAddPaymentMutation();
-  const [updateCustomer, { isLoading: isUpdatingDebt }] = useUpdateCustomerMutation();
+  const [updateCustomer, { isLoading: isUpdatingCustomer }] = useUpdateCustomerMutation();
   const [updateBill, { isLoading: isUpdatingBill }] = useUpdateBillMutation();
   const dispatch = useDispatch();
   const [paymentCurrency, setPaymentCurrency] = useState<"AFN" | "USD">("AFN");
   const [paymentNumber, setPaymentNumber] = useState<string>("");
   const [paymentAmount, setPaymentAmount] = useState<string>("");
+  const [editCustomerOpen, setEditCustomerOpen] = useState(false);
+  const [editCustomerName, setEditCustomerName] = useState("");
+  const [editCustomerPhone, setEditCustomerPhone] = useState("");
+  const [editCustomerAddress, setEditCustomerAddress] = useState("");
+  const [editCustomerNote, setEditCustomerNote] = useState("");
   const [editDebtOpen, setEditDebtOpen] = useState(false);
   const [confirmDebtOpen, setConfirmDebtOpen] = useState(false);
   const [initialDebtAFNInput, setInitialDebtAFNInput] = useState<string>("0");
@@ -52,7 +57,7 @@ export default function CustomerDetailPage() {
   const [editMandawiCheckNumber, setEditMandawiCheckNumber] = useState<string>("");
   const [editNote, setEditNote] = useState<string>("");
   const [editItems, setEditItems] = useState<
-    Array<{ productId: string; numberOfPackages: number }>
+    Array<{ productId: string; numberOfPackages: number; unitPrice: number }>
   >([]);
 
   const payments = customer?.payments ?? [];
@@ -76,6 +81,7 @@ export default function CustomerDetailPage() {
       bill.items.map((item) => ({
         productId: item.productId,
         numberOfPackages: item.numberOfPackages,
+        unitPrice: Number(item.unitPrice) || 0,
       }))
     );
   };
@@ -86,7 +92,7 @@ export default function CustomerDetailPage() {
 
   const handleEditItemChange = (
     index: number,
-    patch: Partial<{ productId: string; numberOfPackages: number }>
+    patch: Partial<{ productId: string; numberOfPackages: number; unitPrice: number }>
   ) => {
     setEditItems((prev) =>
       prev.map((item, idx) => (idx === index ? { ...item, ...patch } : item))
@@ -96,7 +102,7 @@ export default function CustomerDetailPage() {
   const handleAddEditItem = () => {
     setEditItems((prev) => [
       ...prev,
-      { productId: "", numberOfPackages: 0 },
+      { productId: "", numberOfPackages: 0, unitPrice: 0 },
     ]);
   };
 
@@ -289,6 +295,18 @@ export default function CustomerDetailPage() {
     });
   };
 
+  const openEditCustomer = () => {
+    setEditCustomerName(customer.name);
+    setEditCustomerPhone(customer.phoneNumber ?? customer.phone ?? "");
+    setEditCustomerAddress(customer.address ?? "");
+    setEditCustomerNote(customer.note ?? "");
+    setEditCustomerOpen(true);
+  };
+
+  const closeEditCustomer = () => {
+    setEditCustomerOpen(false);
+  };
+
   const parseNonNegative = (value: string) => {
     if (!value.trim()) return 0;
     const parsed = Number(value);
@@ -388,6 +406,57 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const handleCustomerUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!id) return;
+
+    if (!editCustomerName.trim()) {
+      toast.error(t("customerCreate.nameRequired"));
+      return;
+    }
+    if (!editCustomerPhone.trim()) {
+      toast.error(t("customerCreate.phoneRequired"));
+      return;
+    }
+
+    try {
+      await updateCustomer({
+        id,
+        data: {
+          name: editCustomerName.trim(),
+          phoneNumber: editCustomerPhone.trim(),
+          address: editCustomerAddress.trim() || undefined,
+          note: editCustomerNote.trim() || undefined,
+        },
+      }).unwrap();
+
+      toast.success(t("toast.customerUpdated"));
+      closeEditCustomer();
+      dispatch(
+        customersApi.util.invalidateTags([
+          { type: "Customer", id },
+          { type: "Customer", id: "LIST" },
+        ])
+      );
+    } catch (err) {
+      if (
+        typeof err === "object" &&
+        err !== null &&
+        "data" in err &&
+        typeof (err as { data?: { error?: string } }).data === "object" &&
+        (err as { data?: { error?: string } }).data !== null &&
+        "error" in (err as { data?: { error?: string } }).data!
+      ) {
+        toast.error(
+          ((err as { data?: { error?: string } }).data as { error?: string })
+            .error || t("common.somethingWentWrong")
+        );
+      } else {
+        toast.error(t("common.somethingWentWrong"));
+      }
+    }
+  };
+
   const handleEditBillSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editBill) return;
@@ -395,6 +464,7 @@ export default function CustomerDetailPage() {
     const sanitizedItems = editItems.map((item) => ({
       productId: item.productId,
       numberOfPackages: Number(item.numberOfPackages),
+      unitPrice: Number(item.unitPrice),
     }));
 
     if (sanitizedItems.length === 0) {
@@ -409,6 +479,11 @@ export default function CustomerDetailPage() {
 
     if (sanitizedItems.some((item) => !Number.isFinite(item.numberOfPackages) || item.numberOfPackages <= 0)) {
       toast.error(t("toast.enterNonZero"));
+      return;
+    }
+
+    if (sanitizedItems.some((item) => !Number.isFinite(item.unitPrice) || item.unitPrice <= 0)) {
+      toast.error(t("toast.enterValidAmount"));
       return;
     }
 
@@ -469,6 +544,15 @@ export default function CustomerDetailPage() {
               {t("customer.addressLabel")}: {customer.address}
             </p>
           )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={openEditCustomer}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+            >
+              {t("customer.editProfile")}
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -550,7 +634,7 @@ export default function CustomerDetailPage() {
                   onClick={() => setConfirmDebtOpen(true)}
                   className="rounded-full bg-amber-600 px-3 py-1 text-xs font-semibold text-white"
                 >
-                  {isUpdatingDebt ? t("common.saving") : t("customer.saveDebt")}
+                  {isUpdatingCustomer ? t("common.saving") : t("customer.saveDebt")}
                 </button>
               </div>
             </div>
@@ -794,7 +878,7 @@ export default function CustomerDetailPage() {
 
       {editBill && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-4xl rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -915,7 +999,7 @@ export default function CustomerDetailPage() {
                   editItems.map((item, index) => (
                     <div
                       key={`${editBill.id}-item-${index}`}
-                      className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:grid-cols-[1.5fr_0.6fr_auto]"
+                      className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:grid-cols-[1.4fr_0.5fr_0.6fr_auto]"
                     >
                       <select
                         value={item.productId}
@@ -941,6 +1025,19 @@ export default function CustomerDetailPage() {
                           })
                         }
                         placeholder={t("billCreate.packages")}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={item.unitPrice}
+                        onChange={(event) =>
+                          handleEditItemChange(index, {
+                            unitPrice: Number(event.target.value),
+                          })
+                        }
+                        placeholder={t("billPrint.unitPrice")}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                       />
                       <button
@@ -972,6 +1069,99 @@ export default function CustomerDetailPage() {
                   className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                 >
                   {isUpdatingBill ? t("common.saving") : t("common.save")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editCustomerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  {t("customer.editProfile")}
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-slate-900">
+                  {t("customer.editProfileTitle")}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditCustomer}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+
+            <form onSubmit={handleCustomerUpdate} className="mt-6 space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    {t("customer.nameLabel")}
+                  </label>
+                  <input
+                    value={editCustomerName}
+                    onChange={(event) => setEditCustomerName(event.target.value)}
+                    placeholder={t("customerCreate.namePlaceholder")}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    {t("customer.phoneLabel")}
+                  </label>
+                  <input
+                    value={editCustomerPhone}
+                    onChange={(event) => setEditCustomerPhone(event.target.value)}
+                    placeholder={t("customerCreate.phonePlaceholder")}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">
+                  {t("customer.addressLabel")}
+                </label>
+                <input
+                  value={editCustomerAddress}
+                  onChange={(event) => setEditCustomerAddress(event.target.value)}
+                  placeholder={t("customerCreate.addressPlaceholder")}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">
+                  {t("customer.note")}
+                </label>
+                <textarea
+                  rows={3}
+                  value={editCustomerNote}
+                  onChange={(event) => setEditCustomerNote(event.target.value)}
+                  placeholder={t("customerCreate.notePlaceholder")}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeEditCustomer}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingCustomer}
+                  className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {isUpdatingCustomer ? t("common.saving") : t("customer.saveProfile")}
                 </button>
               </div>
             </form>

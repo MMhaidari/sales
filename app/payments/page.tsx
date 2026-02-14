@@ -51,9 +51,15 @@ export default function PaymentsPage() {
 	);
 
 	const customerByBillId = useMemo(() => {
-		const map = new Map<string, string>();
+		const map = new Map<
+			string,
+			{ customerId?: string | null; tempCustomerName?: string | null }
+		>();
 		bills.forEach((bill) => {
-			map.set(bill.id, bill.customerId);
+			map.set(bill.id, {
+				customerId: bill.customerId,
+				tempCustomerName: bill.tempCustomerName,
+			});
 		});
 		return map;
 	}, [bills]);
@@ -250,12 +256,15 @@ export default function PaymentsPage() {
 						)}
 						{!paymentsLoading &&
 							pagedPayments.map((payment) => {
-								const customerIdForBill = payment.billId
+								const billCustomer = payment.billId
 									? customerByBillId.get(payment.billId)
 									: undefined;
-								const customerName = customerIdForBill
-									? customerById.get(customerIdForBill)
-									: t("common.unknown");
+								const customerName =
+									billCustomer?.tempCustomerName ||
+									(billCustomer?.customerId
+										? customerById.get(billCustomer.customerId)
+										: undefined) ||
+									t("common.unknown");
 
 								return (
 									<div

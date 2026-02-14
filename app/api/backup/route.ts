@@ -103,6 +103,7 @@ export async function GET() {
         })),
         bills: bills.map((item) => ({
           ...item,
+          tempCustomerName: item.tempCustomerName ?? null,
           billDate: item.billDate.toISOString(),
           createdAt: item.createdAt.toISOString(),
         })),
@@ -188,7 +189,8 @@ export async function POST(req: NextRequest) {
       "bills"
     ).map((item) => ({
       id: item.id as string,
-      customerId: item.customerId as string,
+      customerId: (item.customerId as string | null) ?? null,
+      tempCustomerName: (item.tempCustomerName as string | null) ?? null,
       billNumber: (item.billNumber as string | null) ?? null,
       status: asEnum(item.status, Object.values(BillStatus), "status"),
       sherkatStock: Boolean(item.sherkatStock),

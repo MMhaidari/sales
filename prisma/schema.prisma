@@ -75,7 +75,8 @@ model Product {
 
 model Bill {
   id                    String   @id @default(uuid())
-  customerId            String
+  customerId            String?
+  tempCustomerName      String?
   billNumber            String?
   status                BillStatus @default(UNPAID)
   sherkatStock          Boolean    @default(false)
@@ -83,9 +84,11 @@ model Bill {
   mandawiCheckNumber    String?
   billDate              DateTime
   note                  String?
+  paidAFN               Decimal  @default(0)
+  paidUSD               Decimal  @default(0)
   createdAt             DateTime @default(now())
 
-  customer              Customer  @relation(fields: [customerId], references: [id])
+  customer              Customer? @relation(fields: [customerId], references: [id])
   items                 BillItem[]
   payments              Payment[]
   stockMovements         Stock[]

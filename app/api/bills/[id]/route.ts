@@ -26,6 +26,7 @@ function handleError(error: unknown) {
 type UpdateBillItemInput = {
   productId: string;
   numberOfPackages: number;
+  unitPrice?: number;
 };
 
 type UpdateBillInput = {
@@ -133,11 +134,14 @@ export async function PUT(
           item &&
           typeof item.productId === "string" &&
           Number.isFinite(item.numberOfPackages) &&
-          item.numberOfPackages > 0
+          item.numberOfPackages > 0 &&
+          (item.unitPrice === undefined ||
+            (Number.isFinite(item.unitPrice) && item.unitPrice > 0))
       )
       .map((item) => ({
         productId: item.productId,
         numberOfPackages: Math.floor(item.numberOfPackages),
+        unitPrice: item.unitPrice,
       }));
 
     if (normalizedItems.length === 0) {
@@ -167,18 +171,26 @@ export async function PUT(
       }
     }
 
+    const enrichedItems = normalizedItems.map((item) => {
+      const product = productMap.get(item.productId)!;
+      const fallbackPrice = Number(product.currentPricePerPackage.toString());
+      const unitPrice =
+        item.unitPrice == null || !Number.isFinite(item.unitPrice)
+          ? fallbackPrice
+          : item.unitPrice;
+      return { ...item, unitPrice, product };
+    });
+
     let totalAFN = 0;
     let totalUSD = 0;
-    for (const item of normalizedItems) {
-      const product = productMap.get(item.productId)!;
-      const unitPrice = Number(product.currentPricePerPackage.toString());
-      const amount = unitPrice * item.numberOfPackages;
-      if (product.currencyType === "AFN") totalAFN += amount;
-      if (product.currencyType === "USD") totalUSD += amount;
+    for (const item of enrichedItems) {
+      const amount = item.unitPrice * item.numberOfPackages;
+      if (item.product.currencyType === "AFN") totalAFN += amount;
+      if (item.product.currencyType === "USD") totalUSD += amount;
     }
 
-    let paidAFN = 0;
-    let paidUSD = 0;
+    let paidAFN = Number(bill.paidAFN.toString());
+    let paidUSD = Number(bill.paidUSD.toString());
     for (const payment of bill.payments) {
       const amount = Number(payment.amountPaid.toString());
       if (payment.currency === "AFN") paidAFN += amount;
@@ -222,18 +234,16 @@ export async function PUT(
           note:
             typeof note === "string" ? note : note === null ? null : bill.note,
           items: {
-            create: normalizedItems.map((item) => {
-              const product = productMap.get(item.productId)!;
-              const unitPrice = product.currentPricePerPackage;
-              const totalAmount = new Prisma.Decimal(unitPrice).mul(
+            create: enrichedItems.map((item) => {
+              const totalAmount = new Prisma.Decimal(item.unitPrice).mul(
                 item.numberOfPackages
               );
               return {
                 productId: item.productId,
                 numberOfPackages: item.numberOfPackages,
-                unitPrice,
+                unitPrice: new Prisma.Decimal(item.unitPrice),
                 totalAmount,
-                currency: product.currencyType,
+                currency: item.product.currencyType,
               };
             }),
           },

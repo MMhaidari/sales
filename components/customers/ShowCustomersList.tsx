@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGetCustomersPagedQuery } from "../../redux/api/customersApi";
 import { useLanguage } from "@/components/ui/LanguageProvider";
 import Pagination from "@/components/ui/Pagination";
@@ -9,14 +9,19 @@ import Pagination from "@/components/ui/Pagination";
 export default function ShowCustomersList() {
   const { t } = useLanguage();
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
   const pageSize = 10;
   const {
     data,
     isLoading,
     error,
-  } = useGetCustomersPagedQuery({ page, pageSize });
+  } = useGetCustomersPagedQuery({ page, pageSize, search });
   const customers = data?.items ?? [];
   const total = data?.total ?? 0;
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   if (isLoading) {
     return (
@@ -84,10 +89,33 @@ export default function ShowCustomersList() {
         </div>
       </div>
 
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+          {t("customers.searchLabel")}
+        </label>
+        <div className="flex flex-1 items-center gap-2">
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t("customers.searchPlaceholder")}
+            className="w-full rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+          />
+          {search.trim() && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+            >
+              {t("customers.clearSearch")}
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="mt-6 space-y-3">
         {customers.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-            {t("customers.noCustomers")}
+            {search.trim() ? t("customers.noResults") : t("customers.noCustomers")}
           </div>
         ) : (
           customers.map((customer, index) => {

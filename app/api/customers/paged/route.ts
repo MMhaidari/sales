@@ -27,11 +27,22 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = parsePositiveInt(searchParams.get("page"), 1);
     const pageSize = parsePositiveInt(searchParams.get("pageSize"), 10);
+    const search = searchParams.get("search")?.trim();
     const skip = (page - 1) * pageSize;
 
-    const total = await prisma.customer.count();
+    const where = search
+      ? {
+          name: {
+            contains: search,
+            mode: "insensitive" as const,
+          },
+        }
+      : undefined;
+
+    const total = await prisma.customer.count({ where });
     const customers = await prisma.customer.findMany({
       orderBy: { createdAt: "desc" },
+      where,
       skip,
       take: pageSize,
     });
@@ -43,6 +54,8 @@ export async function GET(req: NextRequest) {
           select: {
             customerId: true,
             note: true,
+            paidAFN: true,
+            paidUSD: true,
             items: {
               select: {
                 currency: true,
@@ -88,7 +101,11 @@ export async function GET(req: NextRequest) {
 
     for (const bill of bills) {
       const totals = getTotals(bill.customerId);
+      const paidAFN = Number(bill.paidAFN.toString());
+      const paidUSD = Number(bill.paidUSD.toString());
       if (bill.note === "Initial debt adjustment") {
+        totals.initialPaidAFN += paidAFN;
+        totals.initialPaidUSD += paidUSD;
         for (const payment of bill.payments) {
           const amount = Number(payment.amountPaid.toString());
           if (payment.currency === "AFN") {
@@ -107,6 +124,8 @@ export async function GET(req: NextRequest) {
           totals.totalUSD += amount;
         }
       }
+      totals.paidAFN += paidAFN;
+      totals.paidUSD += paidUSD;
       for (const payment of bill.payments) {
         const amount = Number(payment.amountPaid.toString());
         if (payment.currency === "AFN") {

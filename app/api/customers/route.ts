@@ -101,6 +101,8 @@ export async function GET() {
       select: {
         customerId: true,
         note: true,
+        paidAFN: true,
+        paidUSD: true,
         items: {
           select: {
             currency: true,
@@ -144,8 +146,13 @@ export async function GET() {
     };
 
     for (const bill of bills) {
+      if (!bill.customerId) continue;
       const totals = getTotals(bill.customerId);
+      const paidAFN = Number(bill.paidAFN.toString());
+      const paidUSD = Number(bill.paidUSD.toString());
       if (bill.note === "Initial debt adjustment") {
+        totals.initialPaidAFN += paidAFN;
+        totals.initialPaidUSD += paidUSD;
         for (const payment of bill.payments) {
           const amount = Number(payment.amountPaid.toString());
           if (payment.currency === "AFN") {
@@ -164,6 +171,8 @@ export async function GET() {
           totals.totalUSD += amount;
         }
       }
+      totals.paidAFN += paidAFN;
+      totals.paidUSD += paidUSD;
       for (const payment of bill.payments) {
         const amount = Number(payment.amountPaid.toString());
         if (payment.currency === "AFN") {

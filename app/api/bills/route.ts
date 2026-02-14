@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, Prisma, Currency } from "../../generated/prisma/client";
+import { PrismaClient, Prisma } from "../../generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -27,7 +27,8 @@ type CreateBillItemInput = {
 };
 
 type CreateBillInput = {
-	customerId: string;
+	customerId?: string;
+	tempCustomerName?: string;
 	billNumber?: string;
 	status?: "UNPAID" | "PARTIAL" | "PAID";
 	sherkatStock?: boolean;
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
 
 		const {
 			customerId,
+			tempCustomerName,
 			billNumber,
 			status,
 			sherkatStock,
@@ -62,9 +64,18 @@ export async function POST(req: NextRequest) {
 			items,
 		} = body;
 
-		if (!customerId || typeof customerId !== "string") {
+		const normalizedCustomerId =
+			typeof customerId === "string" && customerId.trim()
+				? customerId.trim()
+				: null;
+		const normalizedTempCustomerName =
+			typeof tempCustomerName === "string" && tempCustomerName.trim()
+				? tempCustomerName.trim()
+				: null;
+
+		if (!normalizedCustomerId && !normalizedTempCustomerName) {
 			return NextResponse.json(
-				{ error: "Customer id is required" },
+				{ error: "Customer id or temp customer name is required" },
 				{ status: 400 }
 			);
 		}
@@ -146,6 +157,19 @@ export async function POST(req: NextRequest) {
 				{ error: "Invalid bill items" },
 				{ status: 400 }
 			);
+		}
+
+		if (normalizedCustomerId) {
+			const existingCustomer = await prisma.customer.findUnique({
+				where: { id: normalizedCustomerId },
+				select: { id: true },
+			});
+			if (!existingCustomer) {
+				return NextResponse.json(
+					{ error: "Customer not found" },
+					{ status: 400 }
+				);
+			}
 		}
 
 		const productIds = [...new Set(normalizedItems.map((item) => item.productId))];
@@ -273,7 +297,9 @@ export async function POST(req: NextRequest) {
 
 		const created = await prisma.bill.create({
 			data: {
-				customerId,
+				customer:
+					normalizedCustomerId ? { connect: { id: normalizedCustomerId } } : undefined,
+				tempCustomerName: normalizedCustomerId ? null : normalizedTempCustomerName,
 				billNumber: normalizedBillNumber,
 				status: normalizedStatus,
 				sherkatStock: Boolean(sherkatStock),
@@ -281,6 +307,8 @@ export async function POST(req: NextRequest) {
 				mandawiCheckNumber: normalizedMandawiCheckNumber,
 				billDate: billDate ? new Date(billDate) : new Date(),
 				note: typeof note === "string" ? note : null,
+				paidAFN: new Prisma.Decimal(finalPaidAFN),
+				paidUSD: new Prisma.Decimal(finalPaidUSD),
 				items: {
 					create: normalizedItems.map((item) => {
 						const product = productMap.get(item.productId)!;
@@ -308,37 +336,6 @@ export async function POST(req: NextRequest) {
 								note: "Bill deduction",
 							})),
 						},
-				payments:
-					finalPaidAFN || finalPaidUSD
-						? {
-								create: [
-									...(finalPaidAFN
-										? [
-												{
-													amountPaid: new Prisma.Decimal(finalPaidAFN),
-													currency: Currency.AFN,
-													paymentMethod:
-														normalizedStatus === "PAID"
-															? "Auto"
-															: "Manual",
-												},
-										]
-										: []),
-									...(finalPaidUSD
-										? [
-												{
-													amountPaid: new Prisma.Decimal(finalPaidUSD),
-													currency: Currency.USD,
-													paymentMethod:
-														normalizedStatus === "PAID"
-															? "Auto"
-															: "Manual",
-												},
-										]
-										: []),
-								],
-							}
-						: undefined,
 			},
 			include: {
 				items: {

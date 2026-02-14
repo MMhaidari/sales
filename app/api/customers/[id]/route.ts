@@ -70,7 +70,11 @@ export async function GET(
     let initialPaidUSD = 0;
 
     for (const bill of bills) {
+      const billPaidAFN = Number(bill.paidAFN.toString());
+      const billPaidUSD = Number(bill.paidUSD.toString());
       if (bill.note === "Initial debt adjustment") {
+        initialPaidAFN += billPaidAFN;
+        initialPaidUSD += billPaidUSD;
         for (const payment of bill.payments) {
           const amount = Number(payment.amountPaid.toString());
           if (payment.currency === "AFN") initialPaidAFN += amount;
@@ -83,6 +87,8 @@ export async function GET(
         if (item.currency === "AFN") totalAFN += amount;
         if (item.currency === "USD") totalUSD += amount;
       }
+      paidAFN += billPaidAFN;
+      paidUSD += billPaidUSD;
       for (const payment of bill.payments) {
         const amount = Number(payment.amountPaid.toString());
         if (payment.currency === "AFN") paidAFN += amount;
@@ -195,10 +201,31 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { initialDebtAFN, initialDebtUSD } = body as {
+    const { name, phoneNumber, address, note, initialDebtAFN, initialDebtUSD } = body as {
+      name?: unknown;
+      phoneNumber?: unknown;
+      address?: unknown;
+      note?: unknown;
       initialDebtAFN?: unknown;
       initialDebtUSD?: unknown;
     };
+
+    if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+      return NextResponse.json(
+        { error: "Customer name is required" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      phoneNumber !== undefined &&
+      (typeof phoneNumber !== "string" || !phoneNumber.trim())
+    ) {
+      return NextResponse.json(
+        { error: "Phone number is required" },
+        { status: 400 }
+      );
+    }
 
     const parseNonNegative = (value: unknown) => {
       if (value == null || value === "") return null;
@@ -218,9 +245,23 @@ export async function PUT(
     }
 
     const updateData: {
+      name?: string;
+      phoneNumber?: string;
+      address?: string | null;
+      note?: string | null;
       initialDebtAFN?: number;
       initialDebtUSD?: number;
     } = {};
+
+    if (typeof name === "string") updateData.name = name.trim();
+    if (typeof phoneNumber === "string") updateData.phoneNumber = phoneNumber.trim();
+    if (address !== undefined) {
+      updateData.address =
+        typeof address === "string" && address.trim() ? address.trim() : null;
+    }
+    if (note !== undefined) {
+      updateData.note = typeof note === "string" && note.trim() ? note.trim() : null;
+    }
 
     if (nextInitialAFN !== null) updateData.initialDebtAFN = nextInitialAFN;
     if (nextInitialUSD !== null) updateData.initialDebtUSD = nextInitialUSD;

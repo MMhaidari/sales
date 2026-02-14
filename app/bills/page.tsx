@@ -33,6 +33,7 @@ export default function BillsPage() {
 	const { data: products = [] } = useGetProductsQuery();
 
 	const [filter, setFilter] = useState<FilterKey>("today");
+	const [search, setSearch] = useState("");
 	const [page, setPage] = useState(1);
 	const [sherkatPage, setSherkatPage] = useState(1);
 	const [mandawiPage, setMandawiPage] = useState(1);
@@ -42,6 +43,11 @@ export default function BillsPage() {
 		() => new Map(customers.map((customer) => [customer.id, customer.name])),
 		[customers]
 	);
+	const getBillCustomerName = (bill: { customerId?: string | null; tempCustomerName?: string | null }) => {
+		if (bill.tempCustomerName) return bill.tempCustomerName;
+		if (bill.customerId) return customerById.get(bill.customerId) ?? t("common.unknown");
+		return t("common.unknown");
+	};
 
 	const productById = useMemo(
 		() => new Map(products.map((product) => [product.id, product.name])),
@@ -57,10 +63,15 @@ export default function BillsPage() {
 		weekStart.setDate(weekStart.getDate() - 7);
 		const monthStart = new Date(todayStart);
 		monthStart.setDate(monthStart.getDate() - 30);
+		const normalizedSearch = search.trim().toLowerCase();
 
 		return bills.filter((bill) => {
 			const billDate = new Date(bill.billDate);
 			if (Number.isNaN(billDate.getTime())) return false;
+			if (normalizedSearch) {
+				const billNumberText = bill.billNumber?.toLowerCase() ?? "";
+				if (!billNumberText.includes(normalizedSearch)) return false;
+			}
 
 			switch (filter) {
 				case "today":
@@ -75,11 +86,11 @@ export default function BillsPage() {
 					return true;
 			}
 		});
-	}, [bills, filter]);
+	}, [bills, filter, search]);
 
 	useEffect(() => {
 		setPage(1);
-	}, [filter]);
+	}, [filter, search]);
 
 	const sherkatBills = useMemo(
 		() => bills.filter((bill) => bill.sherkatStock),
@@ -136,6 +147,29 @@ export default function BillsPage() {
 				</div>
 			</div>
 
+			<div className="flex flex-wrap items-center gap-3">
+				<label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+					{t("bills.searchLabel")}
+				</label>
+				<div className="flex flex-1 items-center gap-2">
+					<input
+						value={search}
+						onChange={(event) => setSearch(event.target.value)}
+						placeholder={t("bills.searchPlaceholder")}
+						className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+					/>
+					{search.trim() && (
+						<button
+							type="button"
+							onClick={() => setSearch("")}
+							className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+						>
+							{t("bills.clearSearch")}
+						</button>
+					)}
+				</div>
+			</div>
+
 			<div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
 				<div className="flex items-center justify-between">
 					<h2 className="text-lg font-semibold text-slate-900">{t("bills.listTitle")}</h2>
@@ -150,7 +184,7 @@ export default function BillsPage() {
 					)}
 					{!billsLoading && filteredBills.length === 0 && (
 						<div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-							{t("bills.noBills")}
+							{search.trim() ? t("bills.noResults") : t("bills.noBills")}
 						</div>
 					)}
 					{!billsLoading &&
@@ -184,7 +218,7 @@ export default function BillsPage() {
 												{formatDate(bill.billDate)}
 											</p>
 											<p className="text-xs text-slate-500">
-												{t("bills.customer")}: {customerById.get(bill.customerId) ?? t("common.unknown")}
+												{t("bills.customer")}: {getBillCustomerName(bill)}
 											</p>
 										</div>
 										<div className="flex flex-wrap items-center gap-3 text-right">
@@ -287,7 +321,7 @@ export default function BillsPage() {
 											{formatDate(bill.billDate)}
 									</p>
 									<p className="text-xs text-slate-500">
-										{t("bills.customer")}: {customerById.get(bill.customerId) ?? t("common.unknown")}
+												{t("bills.customer")}: {getBillCustomerName(bill)}
 									</p>
 								</div>
 								<span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -342,7 +376,7 @@ export default function BillsPage() {
 										{formatDate(bill.billDate)}
 									</p>
 									<p className="text-xs text-amber-700">
-										{t("bills.customer")}: {customerById.get(bill.customerId) ?? t("common.unknown")}
+												{t("bills.customer")}: {getBillCustomerName(bill)}
 									</p>
 									{bill.mandawiCheckNumber && (
 										<p className="text-xs text-amber-700">

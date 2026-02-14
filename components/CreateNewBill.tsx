@@ -19,7 +19,8 @@ type BillProduct = {
 
 type Bill = {
     id: string;
-    customerId: string;
+    customerId?: string | null;
+    tempCustomerName?: string | null;
     items: BillProduct[];
     totalAFN: string;
     totalUSD: string;
@@ -49,6 +50,8 @@ const CreateNewBill: React.FC = () => {
     const [addBill, { isLoading: isSaving }] = useAddBillMutation();
     const dispatch = useDispatch();
     const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+    const [isTempCustomer, setIsTempCustomer] = useState(false);
+    const [tempCustomerName, setTempCustomerName] = useState<string>("");
     const [billNumber, setBillNumber] = useState<string>("");
     const [billStatus, setBillStatus] = useState<BillStatus>("UNPAID");
     const [sherkatStock, setSherkatStock] = useState(false);
@@ -110,7 +113,12 @@ const CreateNewBill: React.FC = () => {
         const filteredItems = selectedProducts.filter(
             (item) => item.productId && item.numberOfPackages > 0
         );
-        if (!selectedCustomer || filteredItems.length === 0) return;
+        if (filteredItems.length === 0) return;
+        if (!isTempCustomer && !selectedCustomer) return;
+        if (isTempCustomer && !tempCustomerName.trim()) {
+            toast.error(t("toast.tempCustomerNameRequired"));
+            return;
+        }
         if (!billNumber.trim()) {
             toast.error(t("toast.billNumberRequired"));
             return;
@@ -183,7 +191,8 @@ const CreateNewBill: React.FC = () => {
                 mandawiCheck || Boolean(normalizedMandawiCheckNumber);
 
             const created = await addBill({
-                customerId: selectedCustomer,
+                customerId: isTempCustomer ? undefined : selectedCustomer,
+                tempCustomerName: isTempCustomer ? tempCustomerName.trim() : undefined,
                 billNumber: billNumber.trim() || undefined,
                 status: billStatus,
                 sherkatStock,
@@ -214,6 +223,7 @@ const CreateNewBill: React.FC = () => {
                 {
                     id: created.id,
                     customerId: created.customerId,
+                    tempCustomerName: created.tempCustomerName ?? null,
                     items: created.items.map((item) => ({
                         productId: item.productId,
                         numberOfPackages: item.numberOfPackages,
@@ -232,13 +242,17 @@ const CreateNewBill: React.FC = () => {
             ]);
 
             toast.success(t("toast.billCreated"));
-            dispatch(
-                customersApi.util.invalidateTags([
-                    { type: "Customer", id: created.customerId },
-                    { type: "Customer", id: "LIST" },
-                ])
-            );
+            if (created.customerId) {
+                dispatch(
+                    customersApi.util.invalidateTags([
+                        { type: "Customer", id: created.customerId },
+                        { type: "Customer", id: "LIST" },
+                    ])
+                );
+            }
             setSelectedCustomer("");
+            setIsTempCustomer(false);
+            setTempCustomerName("");
             setBillNumber("");
             setBillStatus("UNPAID");
             setSherkatStock(false);
@@ -299,7 +313,8 @@ const CreateNewBill: React.FC = () => {
                     .replace(/'/g, "&#39;");
 
             const customerName =
-                customers.find((c) => c.id === printBill.customerId)?.name ??
+                printBill.tempCustomerName ||
+                customers.find((c) => c.id === printBill.customerId)?.name ||
                 t("common.unknown");
 
             const rowsHtml = printBill.items
@@ -336,7 +351,7 @@ const CreateNewBill: React.FC = () => {
                         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
                             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.customer"))}</div>
                             <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(customerName)}</div>
-                            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.customerId"))}: ${escapeHtml(printBill.customerId.slice(0, 8))}</div>
+                            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.customerId"))}: ${escapeHtml(printBill.customerId ? printBill.customerId.slice(0, 8) : "--")}</div>
                         </div>
                         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
                             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.billNumber"))}</div>
@@ -446,6 +461,7 @@ const CreateNewBill: React.FC = () => {
                             value={selectedCustomer}
                             onChange={(e) => setSelectedCustomer(e.target.value)}
                             required
+                            disabled={isTempCustomer}
                             className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                         >
                             <option value="">{t("billCreate.selectCustomer")}</option>
@@ -459,6 +475,50 @@ const CreateNewBill: React.FC = () => {
                             <p className="text-xs text-slate-500">{t("billCreate.loadingCustomers")}</p>
                         )}
                     </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">
+                            {t("billCreate.customerType")}
+                        </label>
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setIsTempCustomer(false)}
+                                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                                    isTempCustomer
+                                        ? "border-slate-200 bg-white text-slate-600"
+                                        : "border-slate-900 bg-slate-900 text-white"
+                                }`}
+                            >
+                                {t("billCreate.permanentCustomer")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsTempCustomer(true)}
+                                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                                    isTempCustomer
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : "border-slate-200 bg-white text-slate-600"
+                                }`}
+                            >
+                                {t("billCreate.tempCustomer")}
+                            </button>
+                        </div>
+                    </div>
+
+                    {isTempCustomer && (
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">
+                                {t("billCreate.tempCustomerName")}
+                            </label>
+                            <input
+                                value={tempCustomerName}
+                                onChange={(e) => setTempCustomerName(e.target.value)}
+                                placeholder={t("billCreate.tempCustomerPlaceholder")}
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                            />
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <label className="text-sm font-semibold text-slate-700">
@@ -730,7 +790,7 @@ const CreateNewBill: React.FC = () => {
                     </div>
                     <div className="mt-5 space-y-3 text-sm text-slate-600">
                         <p>
-                            {t("billCreate.customer")}: {selectedCustomer || t("billCreate.notSelected")}
+                            {t("billCreate.customer")}: {isTempCustomer ? tempCustomerName || t("billCreate.tempCustomer") : selectedCustomer || t("billCreate.notSelected")}
                         </p>
                         <div className="space-y-2">
                             {previewItems.map((item) => {
@@ -788,9 +848,11 @@ const CreateNewBill: React.FC = () => {
                         </div>
                     )}
                     {bills.map((bill, idx) => {
-                        const customer = customers.find(
-                            (c) => c.id === bill.customerId
-                        );
+                        const customer = bill.customerId
+                            ? customers.find((c) => c.id === bill.customerId)
+                            : undefined;
+                        const customerName =
+                            bill.tempCustomerName || customer?.name || t("common.unknown");
                         return (
                             <div
                                 key={idx}
@@ -798,7 +860,7 @@ const CreateNewBill: React.FC = () => {
                             >
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                     <p className="text-sm font-semibold text-slate-900">
-                                        {customer?.name}
+                                        {customerName}
                                     </p>
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                                         <span>{t("billCreate.afnTotal")}: {bill.totalAFN}</span>

@@ -103,6 +103,8 @@ export async function POST(req: NextRequest) {
         select: {
           id: true,
           customerId: true,
+          paidAFN: true,
+          paidUSD: true,
           items: {
             select: {
               currency: true,
@@ -130,17 +132,20 @@ export async function POST(req: NextRequest) {
       }
 
       let billTotal = 0;
-      let billPaid = 0;
+      let paidAFN = Number(bill.paidAFN.toString());
+      let paidUSD = Number(bill.paidUSD.toString());
       for (const item of bill.items) {
         if (item.currency === currency) {
           billTotal += Number(item.totalAmount.toString());
         }
       }
       for (const payment of bill.payments) {
-        if (payment.currency === currency) {
-          billPaid += Number(payment.amountPaid.toString());
-        }
+        const amount = Number(payment.amountPaid.toString());
+        if (payment.currency === "AFN") paidAFN += amount;
+        if (payment.currency === "USD") paidUSD += amount;
       }
+
+      const billPaid = currency === "USD" ? paidUSD : paidAFN;
 
       const billRemaining = Math.max(billTotal - billPaid, 0);
       if (parsedAmount > billRemaining) {

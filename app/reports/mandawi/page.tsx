@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useGetBillsQuery } from "@/redux/api/billsApi";
 import { useGetProductsQuery } from "@/redux/api/productApi";
 import { useLanguage } from "@/components/ui/LanguageProvider";
-import { formatDualDate } from "@/lib/dateFormat";
 import Pagination from "@/components/ui/Pagination";
 
 type ReportRow = {
@@ -15,34 +14,19 @@ type ReportRow = {
 	totalUSD: number;
 };
 
-function startOfDay(date: Date) {
-	const copy = new Date(date);
-	copy.setHours(0, 0, 0, 0);
-	return copy;
-}
-
-export default function ReportsPage() {
+export default function MandawiReportPage() {
 	const { t } = useLanguage();
 	const { data: bills = [], isLoading: billsLoading } = useGetBillsQuery();
-	const { data: products = [], isLoading: productsLoading } =
-		useGetProductsQuery();
+	const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
 	const [page, setPage] = useState(1);
 	const pageSize = 10;
-
-	const today = new Date();
-	const todayStart = startOfDay(today);
-	const tomorrowStart = new Date(todayStart);
-	tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
 	const reportRows = useMemo<ReportRow[]>(() => {
 		const productsById = new Map(products.map((product) => [product.id, product]));
 		const rows = new Map<string, ReportRow>();
 
 		bills.forEach((bill) => {
-			const billDate = new Date(bill.billDate);
-			if (Number.isNaN(billDate.getTime())) return;
-			if (billDate < todayStart || billDate >= tomorrowStart) return;
-
+			if (!bill.mandawiCheck) return;
 			bill.items.forEach((item) => {
 				const existing = rows.get(item.productId);
 				const product = productsById.get(item.productId);
@@ -70,7 +54,7 @@ export default function ReportsPage() {
 		return Array.from(rows.values()).sort(
 			(a, b) => b.packagesSold - a.packagesSold
 		);
-	}, [bills, products, t, todayStart, tomorrowStart]);
+	}, [bills, products, t]);
 	const totalPages = Math.max(1, Math.ceil(reportRows.length / pageSize));
 	const safePage = Math.min(page, totalPages);
 
@@ -86,6 +70,22 @@ export default function ReportsPage() {
 		);
 	}, [reportRows]);
 
+	const mandawiStats = useMemo(() => {
+		let totalBills = 0;
+		let checkBills = 0;
+		let hesabBills = 0;
+		bills.forEach((bill) => {
+			if (!bill.mandawiCheck) return;
+			totalBills += 1;
+			if (bill.mandawiCheckNumber) {
+				checkBills += 1;
+			} else {
+				hesabBills += 1;
+			}
+		});
+		return { totalBills, checkBills, hesabBills };
+	}, [bills]);
+
 	const pagedRows = useMemo(() => {
 		const start = (safePage - 1) * pageSize;
 		return reportRows.slice(start, start + pageSize);
@@ -99,18 +99,42 @@ export default function ReportsPage() {
 						{t("reports.title")}
 					</p>
 					<h1 className="mt-2 text-3xl font-semibold text-slate-900">
-						{t("reports.dailyTitle")}
+						{t("mandawiReport.title")}
 					</h1>
 					<p className="mt-1 text-sm text-slate-600">
-						{t("reports.dailySubtitle")}
+						{t("mandawiReport.subtitle")}
 					</p>
 				</div>
 				<div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700">
-					{t("reports.dateLabel")}: {formatDualDate(today.toISOString())}
+					{t("mandawiReport.allTime")}
 				</div>
 			</div>
 
-			<div className="grid gap-4 md:grid-cols-3">
+			<div className="grid gap-4 md:grid-cols-4">
+				<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+					<p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+						{t("mandawiReport.totalBills")}
+					</p>
+					<p className="mt-2 text-2xl font-semibold text-slate-900">
+						{mandawiStats.totalBills.toLocaleString()}
+					</p>
+				</div>
+				<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+					<p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+						{t("bills.mandawiCheck")}
+					</p>
+					<p className="mt-2 text-2xl font-semibold text-amber-600">
+						{mandawiStats.checkBills.toLocaleString()}
+					</p>
+				</div>
+				<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+					<p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+						{t("bills.hesabMandawi")}
+					</p>
+					<p className="mt-2 text-2xl font-semibold text-slate-700">
+						{mandawiStats.hesabBills.toLocaleString()}
+					</p>
+				</div>
 				<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
 					<p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
 						{t("reports.totalPackages")}
@@ -119,6 +143,9 @@ export default function ReportsPage() {
 						{totals.totalPackages.toLocaleString()}
 					</p>
 				</div>
+			</div>
+
+			<div className="grid gap-4 md:grid-cols-2">
 				<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
 					<p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
 						{t("reports.totalAFN")}
@@ -140,20 +167,20 @@ export default function ReportsPage() {
 			<div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
 				<div className="flex items-center justify-between">
 					<h2 className="text-lg font-semibold text-slate-900">
-						{t("reports.dailyTitle")}
+						{t("mandawiReport.tableTitle")}
 					</h2>
 					{(billsLoading || productsLoading) && (
-						<span className="text-xs text-slate-400">{t("reports.loading")}</span>
+						<span className="text-xs text-slate-400">{t("mandawiReport.loading")}</span>
 					)}
 				</div>
 
 				<div className="mt-4 space-y-3">
 					{(billsLoading || productsLoading) && (
-						<p className="text-sm text-slate-500">{t("reports.loading")}</p>
+						<p className="text-sm text-slate-500">{t("mandawiReport.loading")}</p>
 					)}
 					{!billsLoading && !productsLoading && reportRows.length === 0 && (
 						<div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-							{t("reports.noSales")}
+							{t("mandawiReport.noBills")}
 						</div>
 					)}
 					{!billsLoading && !productsLoading && reportRows.length > 0 && (

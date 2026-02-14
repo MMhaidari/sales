@@ -87,8 +87,20 @@ export const customersApi = createApi({
                         ]
                     : [{ type: 'Customer', id: 'LIST' }],
         }),
-        getCustomersPaged: builder.query<PaginatedResponse<Customer>, { page: number; pageSize: number }>({
-            query: ({ page, pageSize }) => `paged?page=${page}&pageSize=${pageSize}`,
+        getCustomersPaged: builder.query<
+            PaginatedResponse<Customer>,
+            { page: number; pageSize: number; search?: string }
+        >({
+            query: ({ page, pageSize, search }) => {
+                const params = new URLSearchParams({
+                    page: String(page),
+                    pageSize: String(pageSize),
+                });
+                if (search?.trim()) {
+                    params.set('search', search.trim());
+                }
+                return `paged?${params.toString()}`;
+            },
             providesTags: (result) =>
                 result
                     ? [
