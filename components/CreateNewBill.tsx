@@ -50,6 +50,7 @@ const CreateNewBill: React.FC = () => {
     const [addBill, { isLoading: isSaving }] = useAddBillMutation();
     const dispatch = useDispatch();
     const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+    const [customerSearch, setCustomerSearch] = useState<string>("");
     const [isTempCustomer, setIsTempCustomer] = useState(false);
     const [tempCustomerName, setTempCustomerName] = useState<string>("");
     const [billNumber, setBillNumber] = useState<string>("");
@@ -69,6 +70,25 @@ const CreateNewBill: React.FC = () => {
     const productsById = useMemo(() => {
         return new Map(products.map((product) => [product.id, product]));
     }, [products]);
+
+    const customerById = useMemo(
+        () => new Map(customers.map((customer) => [customer.id, customer.name])),
+        [customers]
+    );
+
+    const customerNameByLower = useMemo(() => {
+        return new Map(
+            customers.map((customer) => [customer.name.toLowerCase(), customer])
+        );
+    }, [customers]);
+
+    const filteredCustomers = useMemo(() => {
+        const term = customerSearch.trim().toLowerCase();
+        if (!term) return customers;
+        return customers.filter((customer) =>
+            customer.name.toLowerCase().includes(term)
+        );
+    }, [customers, customerSearch]);
 
     const stockByProductId = useMemo(() => {
         return new Map(
@@ -251,6 +271,7 @@ const CreateNewBill: React.FC = () => {
                 );
             }
             setSelectedCustomer("");
+            setCustomerSearch("");
             setIsTempCustomer(false);
             setTempCustomerName("");
             setBillNumber("");
@@ -457,20 +478,37 @@ const CreateNewBill: React.FC = () => {
                         <label className="text-sm font-semibold text-slate-700">
                             {t("billCreate.customer")}
                         </label>
-                        <select
-                            value={selectedCustomer}
-                            onChange={(e) => setSelectedCustomer(e.target.value)}
-                            required
+                        <input
+                            value={customerSearch}
+                            onChange={(event) => {
+                                const nextValue = event.target.value;
+                                setCustomerSearch(nextValue);
+                                const match = customerNameByLower.get(
+                                    nextValue.trim().toLowerCase()
+                                );
+                                setSelectedCustomer(match ? match.id : "");
+                            }}
+                            onBlur={() => {
+                                const match = customerNameByLower.get(
+                                    customerSearch.trim().toLowerCase()
+                                );
+                                if (match) setSelectedCustomer(match.id);
+                            }}
+                            list="bill-customer-options"
+                            placeholder={t("billCreate.selectCustomer")}
                             disabled={isTempCustomer}
                             className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                        >
-                            <option value="">{t("billCreate.selectCustomer")}</option>
-                            {customers.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                    {c.name}
-                                </option>
+                        />
+                        <datalist id="bill-customer-options">
+                            {filteredCustomers.map((customer) => (
+                                <option key={customer.id} value={customer.name} />
                             ))}
-                        </select>
+                        </datalist>
+                        {!isTempCustomer && selectedCustomer && (
+                            <p className="text-xs text-slate-500">
+                                {t("billCreate.customer")}: {customerById.get(selectedCustomer)}
+                            </p>
+                        )}
                         {isCustomersLoading && (
                             <p className="text-xs text-slate-500">{t("billCreate.loadingCustomers")}</p>
                         )}
@@ -790,7 +828,7 @@ const CreateNewBill: React.FC = () => {
                     </div>
                     <div className="mt-5 space-y-3 text-sm text-slate-600">
                         <p>
-                            {t("billCreate.customer")}: {isTempCustomer ? tempCustomerName || t("billCreate.tempCustomer") : selectedCustomer || t("billCreate.notSelected")}
+                            {t("billCreate.customer")}: {isTempCustomer ? tempCustomerName || t("billCreate.tempCustomer") : customerById.get(selectedCustomer) || t("billCreate.notSelected")}
                         </p>
                         <div className="space-y-2">
                             {previewItems.map((item) => {
