@@ -10,6 +10,12 @@ if (!globalForPrisma.prisma) globalForPrisma.prisma = prisma;
 function handleError(error: unknown) {
 	console.error(error);
 	if (error instanceof Prisma.PrismaClientKnownRequestError) {
+		if (error.code === "P2002") {
+			return NextResponse.json(
+				{ error: "Bill number already exists" },
+				{ status: 409 }
+			);
+		}
 		return NextResponse.json(
 			{ error: error.message, code: error.code },
 			{ status: 400 }
@@ -105,6 +111,17 @@ export async function POST(req: NextRequest) {
 			return NextResponse.json(
 				{ error: "Bill number must be digits only" },
 				{ status: 400 }
+			);
+		}
+
+		const existingBill = await prisma.bill.findFirst({
+			where: { billNumber: normalizedBillNumber },
+			select: { id: true },
+		});
+		if (existingBill) {
+			return NextResponse.json(
+				{ error: "Bill number already exists" },
+				{ status: 409 }
 			);
 		}
 

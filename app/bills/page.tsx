@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGetBillsQuery } from "@/redux/api/billsApi";
 import { useGetCustomersQuery } from "@/redux/api/customersApi";
 import { useGetProductsQuery } from "@/redux/api/productApi";
@@ -31,6 +31,11 @@ export default function BillsPage() {
 	const { data: customers = [], isLoading: customersLoading } =
 		useGetCustomersQuery();
 	const { data: products = [] } = useGetProductsQuery();
+	const isSystemBill = useCallback(
+		(note?: string | null) =>
+			note === "Initial debt adjustment" || note === "Customer payment adjustment",
+		[]
+	);
 
 	const [filter, setFilter] = useState<FilterKey>("today");
 	const [search, setSearch] = useState("");
@@ -66,6 +71,7 @@ export default function BillsPage() {
 		const normalizedSearch = search.trim().toLowerCase();
 
 		return bills.filter((bill) => {
+			if (isSystemBill(bill.note)) return false;
 			const billDate = new Date(bill.billDate);
 			if (Number.isNaN(billDate.getTime())) return false;
 			if (normalizedSearch) {
@@ -86,20 +92,20 @@ export default function BillsPage() {
 					return true;
 			}
 		});
-	}, [bills, filter, search]);
+	}, [bills, filter, search, isSystemBill]);
 
 	useEffect(() => {
 		setPage(1);
 	}, [filter, search]);
 
 	const sherkatBills = useMemo(
-		() => bills.filter((bill) => bill.sherkatStock),
-		[bills]
+		() => bills.filter((bill) => bill.sherkatStock && !isSystemBill(bill.note)),
+		[bills, isSystemBill]
 	);
 
 	const mandawiBills = useMemo(
-		() => bills.filter((bill) => bill.mandawiCheck),
-		[bills]
+		() => bills.filter((bill) => bill.mandawiCheck && !isSystemBill(bill.note)),
+		[bills, isSystemBill]
 	);
 
 	const pagedFilteredBills = useMemo(() => {

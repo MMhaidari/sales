@@ -55,6 +55,10 @@ export type UpdateBillInput = {
 	items: BillItemInput[];
 };
 
+export type DeleteBillResponse = {
+	success: boolean;
+};
+
 export const billsApi = createApi({
 	reducerPath: "billsApi",
 	baseQuery: fetchBaseQuery({ baseUrl: "/api/bills" }),
@@ -89,7 +93,17 @@ export const billsApi = createApi({
 				{ type: "Bill", id: "LIST" },
 			],
 		}),
+		deleteBill: builder.mutation<DeleteBillResponse, string>({
+			query: (id) => ({
+				url: `/${id}`,
+				method: "DELETE",
+			}),
+			invalidatesTags: (result, error, id) => [
+				{ type: "Bill", id },
+				{ type: "Bill", id: "LIST" },
+			],
+		}),
 	}),
 });
 
-export const { useGetBillsQuery, useAddBillMutation, useUpdateBillMutation } = billsApi;
+export const { useGetBillsQuery, useAddBillMutation, useUpdateBillMutation, useDeleteBillMutation } = billsApi;

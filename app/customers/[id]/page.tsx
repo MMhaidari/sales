@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { BillSummary, useGetCustomerByIdQuery, useUpdateCustomerMutation } from "@/redux/api/customersApi";
-import { useAddPaymentMutation } from "@/redux/api/paymentsApi";
-import { useUpdateBillMutation } from "@/redux/api/billsApi";
+import { useAddPaymentMutation, useDeletePaymentMutation } from "@/redux/api/paymentsApi";
+import { useDeleteBillMutation, useUpdateBillMutation } from "@/redux/api/billsApi";
 import { useGetProductsQuery } from "@/redux/api/productApi";
 import { customersApi } from "@/redux/api/customersApi";
 import { useDispatch } from "react-redux";
@@ -34,8 +34,10 @@ export default function CustomerDetailPage() {
   const { data: products = [], isLoading: isProductsLoading } = useGetProductsQuery();
 
   const [addPayment, { isLoading: isPaying }] = useAddPaymentMutation();
+  const [deletePayment, { isLoading: isDeletingPayment }] = useDeletePaymentMutation();
   const [updateCustomer, { isLoading: isUpdatingCustomer }] = useUpdateCustomerMutation();
   const [updateBill, { isLoading: isUpdatingBill }] = useUpdateBillMutation();
+  const [deleteBill, { isLoading: isDeletingBill }] = useDeleteBillMutation();
   const dispatch = useDispatch();
   const [paymentCurrency, setPaymentCurrency] = useState<"AFN" | "USD">("AFN");
   const [paymentNumber, setPaymentNumber] = useState<string>("");
@@ -59,6 +61,8 @@ export default function CustomerDetailPage() {
   const [editItems, setEditItems] = useState<
     Array<{ productId: string; numberOfPackages: number; unitPrice: number }>
   >([]);
+  const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null);
+  const [deleteBillId, setDeleteBillId] = useState<string | null>(null);
 
   const payments = customer?.payments ?? [];
 
@@ -159,6 +163,9 @@ export default function CustomerDetailPage() {
   const paidAFN = customer.paidAFN ?? "0";
   const paidUSD = customer.paidUSD ?? "0";
   const bills = customer.bills ?? [];
+  const isSystemBill = (note?: string | null) =>
+    note === "Initial debt adjustment" || note === "Customer payment adjustment";
+  const visibleBills = bills.filter((bill) => !isSystemBill(bill.note));
 
   const escapeHtml = (value: string) =>
     value
@@ -191,7 +198,7 @@ export default function CustomerDetailPage() {
       })
       .join("");
 
-    const billsHtml = bills
+    const billsHtml = visibleBills
       .map((bill) => {
         const billLabel = bill.billNumber
           ? `${t("bills.billLabel")} #${bill.billNumber}`
@@ -283,7 +290,7 @@ export default function CustomerDetailPage() {
         </div>
 
         <div style="margin-top:18px;">
-          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.2em;color:#94a3b8;margin-bottom:8px;">${escapeHtml(t("customer.customerBills"))}</div>
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.2em;color:#94a3b8;margin-bottom:8px;">${escapeHtml(t("customer.customerBills"))}</div>
           ${billsHtml || `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">${escapeHtml(t("customer.noBills"))}</div>`}
         </div>
       </div>
@@ -406,6 +413,24 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const handleConfirmDeletePayment = async () => {
+    if (!deletePaymentId) return;
+    try {
+      await deletePayment(deletePaymentId).unwrap();
+      toast.success(t("toast.paymentDeleted"));
+      setDeletePaymentId(null);
+      dispatch(
+        customersApi.util.invalidateTags([
+          { type: "Customer", id },
+          { type: "Customer", id: "LIST" },
+        ])
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(t("toast.failedDeletePayment"));
+    }
+  };
+
   const handleCustomerUpdate = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!id) return;
@@ -523,6 +548,25 @@ export default function CustomerDetailPage() {
       } else {
         toast.error(t("toast.failedUpdateBill"));
       }
+    }
+  };
+
+  const handleConfirmDeleteBill = async () => {
+    if (!deleteBillId) return;
+    try {
+      await deleteBill(deleteBillId).unwrap();
+      toast.success(t("toast.billDeleted"));
+      setDeleteBillId(null);
+      setEditBill(null);
+      dispatch(
+        customersApi.util.invalidateTags([
+          { type: "Customer", id },
+          { type: "Customer", id: "LIST" },
+        ])
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(t("toast.failedDeleteBill"));
     }
   };
 
@@ -761,11 +805,30 @@ export default function CustomerDetailPage() {
                   </span>
                   <span>{t("customer.amountLabel")}: {payment.amountPaid}</span>
                   <span>{payment.paymentMethod}</span>
+                  <button
+                    type="button"
+                    onClick={() => setDeletePaymentId(payment.id)}
+                    disabled={isDeletingPayment}
+                    className="rounded-full border border-rose-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-rose-600 transition hover:border-rose-300 disabled:opacity-50"
+                  >
+                    {t("common.undo")}
+                  </button>
                 </div>
               </div>
             ))
           )}
         </div>
+
+        <ConfirmDialog
+          open={Boolean(deletePaymentId)}
+          title={t("payments.undoTitle")}
+          description={t("payments.undoDescription")}
+          confirmLabel={t("common.undo")}
+          cancelLabel={t("common.cancel")}
+          danger
+          onCancel={() => setDeletePaymentId(null)}
+          onConfirm={handleConfirmDeletePayment}
+        />
       </div>
 
       <div className="mt-6 rounded-3xl border border-slate-100 bg-white p-5">
@@ -779,17 +842,17 @@ export default function CustomerDetailPage() {
             </h2>
           </div>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700">
-            {bills.length} {t("common.total")}
+					{visibleBills.length} {t("common.total")}
           </span>
         </div>
 
         <div className="mt-4 space-y-3">
-          {bills.length === 0 ? (
+				{visibleBills.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
               {t("customer.noBills")}
             </div>
           ) : (
-            bills.map((bill) => (
+					visibleBills.map((bill) => (
               <details
                 key={bill.id}
                 className="rounded-2xl border border-slate-100 bg-slate-50"
@@ -1055,7 +1118,16 @@ export default function CustomerDetailPage() {
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDeleteBillId(editBill.id)}
+                  disabled={isDeletingBill}
+                  className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:border-rose-300 disabled:opacity-50"
+                >
+                  {t("common.delete")}
+                </button>
+                <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={closeEditBill}
@@ -1070,6 +1142,7 @@ export default function CustomerDetailPage() {
                 >
                   {isUpdatingBill ? t("common.saving") : t("common.save")}
                 </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1168,6 +1241,17 @@ export default function CustomerDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteBillId)}
+        title={t("bills.deleteTitle")}
+        description={t("bills.deleteDescription")}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        danger
+        onCancel={() => setDeleteBillId(null)}
+        onConfirm={handleConfirmDeleteBill}
+      />
 
       <ConfirmDialog
         open={confirmDebtOpen}

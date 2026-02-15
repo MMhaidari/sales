@@ -61,6 +61,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const lastCustomer = await prisma.customer.findFirst({
+      orderBy: { orderIndex: "desc" },
+      select: { orderIndex: true },
+    });
+    const nextOrderIndex = (lastCustomer?.orderIndex ?? -1) + 1;
+
     const customer = await prisma.customer.create({
       data: {
         name,
@@ -69,6 +75,7 @@ export async function POST(req: Request) {
         note,
         initialDebtAFN: normalizedInitialAFN,
         initialDebtUSD: normalizedInitialUSD,
+        orderIndex: nextOrderIndex,
       },
     });
 
@@ -94,7 +101,7 @@ export async function POST(req: Request) {
 export async function GET() {
   try {
     const customers = await prisma.customer.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ orderIndex: "asc" }, { createdAt: "asc" }],
     });
 
     const bills = await prisma.bill.findMany({

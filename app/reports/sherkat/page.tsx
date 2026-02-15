@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useGetBillsQuery } from "@/redux/api/billsApi";
 import { useGetProductsQuery } from "@/redux/api/productApi";
 import { useLanguage } from "@/components/ui/LanguageProvider";
@@ -20,13 +20,18 @@ export default function SherkatReportPage() {
 	const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
 	const [page, setPage] = useState(1);
 	const pageSize = 10;
+	const isSystemBill = useCallback(
+		(note?: string | null) =>
+			note === "Initial debt adjustment" || note === "Customer payment adjustment",
+		[]
+	);
 
 	const reportRows = useMemo<ReportRow[]>(() => {
 		const productsById = new Map(products.map((product) => [product.id, product]));
 		const rows = new Map<string, ReportRow>();
 
 		bills.forEach((bill) => {
-			if (!bill.sherkatStock) return;
+			if (!bill.sherkatStock || isSystemBill(bill.note)) return;
 			bill.items.forEach((item) => {
 				const existing = rows.get(item.productId);
 				const product = productsById.get(item.productId);
@@ -54,7 +59,7 @@ export default function SherkatReportPage() {
 		return Array.from(rows.values()).sort(
 			(a, b) => b.packagesSold - a.packagesSold
 		);
-	}, [bills, products, t]);
+	}, [bills, products, t, isSystemBill]);
 	const totalPages = Math.max(1, Math.ceil(reportRows.length / pageSize));
 	const safePage = Math.min(page, totalPages);
 
@@ -73,11 +78,11 @@ export default function SherkatReportPage() {
 	const sherkatStats = useMemo(() => {
 		let totalBills = 0;
 		bills.forEach((bill) => {
-			if (!bill.sherkatStock) return;
+			if (!bill.sherkatStock || isSystemBill(bill.note)) return;
 			totalBills += 1;
 		});
 		return { totalBills };
-	}, [bills]);
+	}, [bills, isSystemBill]);
 
 	const pagedRows = useMemo(() => {
 		const start = (safePage - 1) * pageSize;

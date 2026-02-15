@@ -25,6 +25,10 @@ export type PaymentResponse = {
   payments: Payment[];
 };
 
+export type DeletePaymentResponse = {
+  success: boolean;
+};
+
 export const paymentsApi = createApi({
   reducerPath: "paymentsApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api/payments" }),
@@ -51,7 +55,17 @@ export const paymentsApi = createApi({
       }),
       invalidatesTags: [{ type: "Payment", id: "LIST" }],
     }),
+    deletePayment: builder.mutation<DeletePaymentResponse, string>({
+      query: (id) => ({
+        url: `/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, id) => [
+        { type: "Payment", id },
+        { type: "Payment", id: "LIST" },
+      ],
+    }),
   }),
 });
 
-export const { useGetPaymentsQuery, useAddPaymentMutation } = paymentsApi;
+export const { useGetPaymentsQuery, useAddPaymentMutation, useDeletePaymentMutation } = paymentsApi;

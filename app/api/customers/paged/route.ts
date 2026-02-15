@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     const total = await prisma.customer.count({ where });
     const customers = await prisma.customer.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ orderIndex: "asc" }, { createdAt: "asc" }],
       where,
       skip,
       take: pageSize,

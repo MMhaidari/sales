@@ -8,10 +8,17 @@ const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 if (!globalForPrisma.prisma) globalForPrisma.prisma = prisma;
 
 const INITIAL_DEBT_NOTE = "Initial debt adjustment";
+const CUSTOMER_PAYMENT_NOTE = "Customer payment adjustment";
 
 function handleError(error: unknown) {
   console.error(error);
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Bill number already exists" },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { error: error.message, code: error.code },
       { status: 400 }
@@ -100,6 +107,20 @@ export async function PUT(
       return NextResponse.json(
         { error: "Bill number must be digits only" },
         { status: 400 }
+      );
+    }
+
+    const existingBill = await prisma.bill.findFirst({
+      where: {
+        billNumber: normalizedBillNumber,
+        NOT: { id },
+      },
+      select: { id: true },
+    });
+    if (existingBill) {
+      return NextResponse.json(
+        { error: "Bill number already exists" },
+        { status: 409 }
       );
     }
 
@@ -278,6 +299,45 @@ export async function PUT(
     });
 
     return NextResponse.json(updated, { status: 200 });
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ error: "Bill id is required" }, { status: 400 });
+    }
+
+    const bill = await prisma.bill.findUnique({
+      where: { id },
+      select: { id: true, note: true },
+    });
+
+    if (!bill) {
+      return NextResponse.json({ error: "Bill not found" }, { status: 404 });
+    }
+
+    if (bill.note === INITIAL_DEBT_NOTE || bill.note === CUSTOMER_PAYMENT_NOTE) {
+      return NextResponse.json(
+        { error: "System bills cannot be deleted" },
+        { status: 400 }
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.deleteMany({ where: { billId: id } });
+      await tx.billItem.deleteMany({ where: { billId: id } });
+      await tx.stock.deleteMany({ where: { billId: id, sourceType: "BILL" } });
+      await tx.bill.delete({ where: { id } });
+    });
+
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     return handleError(error);
   }

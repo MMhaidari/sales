@@ -38,6 +38,7 @@ model Customer {
   name             String   @unique
   phoneNumber      String
   address          String?
+  orderIndex       Int      @default(0)
 
   totalDebtAmount  Decimal  @default(0)
   totalPaidAmount  Decimal  @default(0)
@@ -77,7 +78,7 @@ model Bill {
   id                    String   @id @default(uuid())
   customerId            String?
   tempCustomerName      String?
-  billNumber            String?
+  billNumber            String?  @unique
   status                BillStatus @default(UNPAID)
   sherkatStock          Boolean    @default(false)
   mandawiCheck          Boolean    @default(false)
@@ -115,7 +116,7 @@ model BillItem {
 model Payment {
   id            String   @id @default(uuid())
   billId        String
-  paymentNumber String?
+  paymentNumber String?  @unique
 
   amountPaid    Decimal
   currency      Currency

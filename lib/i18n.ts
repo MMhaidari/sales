@@ -48,6 +48,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "common.history": "History",
     "common.overview": "Overview",
     "common.unknown": "Unknown",
+    "common.undo": "Undo",
 
     "pagination.prev": "Prev",
     "pagination.next": "Next",
@@ -146,6 +147,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "bills.mandawiBills": "Mandawi bills",
     "bills.noMandawi": "No Mandawi bills yet.",
     "bills.checkNumber": "Check",
+    "bills.deleteTitle": "Delete bill?",
+    "bills.deleteDescription": "This will remove the bill and its payments. This cannot be undone.",
 
     "payments.title": "Payments",
     "payments.paymentLabel": "Payment",
@@ -162,6 +165,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "payments.filterByPeriod": "Filter by recent periods",
     "payments.noPayments": "No payments found for this period.",
     "payments.loadingPayments": "Loading payments...",
+    "payments.undoTitle": "Undo payment",
+    "payments.undoDescription": "This will remove the payment and update the bill balance.",
 
     "stocks.inventory": "Inventory",
     "stocks.title": "Stocks",
@@ -224,6 +229,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "customers.noResults": "No customers match this search.",
     "customers.loadErrorTitle": "Could not load customers",
     "customers.loadErrorMessage": "Please refresh the page or try again shortly.",
+
+    "toast.paymentDeleted": "Payment removed.",
+    "toast.failedDeletePayment": "Failed to remove payment.",
 
     "debts.title": "Customer Debts",
     "debts.subtitle": "Track outstanding balances in AFN and USD.",
@@ -467,6 +475,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "toast.failedCreateBill": "Failed to create bill",
     "toast.insufficientStock": "Insufficient stock for",
     "toast.billUpdated": "Bill updated",
+    "toast.billDeleted": "Bill deleted",
+    "toast.failedDeleteBill": "Failed to delete bill",
     "toast.failedUpdateBill": "Failed to update bill",
     "toast.paidAmountsRequired": "Enter paid AFN and USD amounts",
     "toast.paidNegative": "Paid amounts cannot be negative",
@@ -518,6 +528,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "common.history": "تاریخچه",
     "common.overview": "نمای کلی",
     "common.unknown": "نامشخص",
+    "common.undo": "برگشت",
 
     "pagination.prev": "قبلی",
     "pagination.next": "بعدی",
@@ -616,6 +627,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "bills.mandawiBills": "بیل‌های ماندوی",
     "bills.noMandawi": "هنوز بیل ماندوی ثبت نشده است.",
     "bills.checkNumber": "چک",
+    "bills.deleteTitle": "حذف بیل؟",
+    "bills.deleteDescription": "این بیل و پرداخت‌های آن حذف می‌شود. قابل بازگشت نیست.",
 
     "payments.title": "پرداخت‌ها",
     "payments.paymentLabel": "پرداخت",
@@ -632,6 +645,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "payments.filterByPeriod": "فیلتر بر اساس دوره",
     "payments.noPayments": "برای این بازه پرداختی یافت نشد.",
     "payments.loadingPayments": "در حال بارگذاری پرداخت‌ها...",
+    "payments.undoTitle": "لغو پرداخت",
+    "payments.undoDescription": "این پرداخت حذف می‌شود و مانده بیل به‌روزرسانی می‌شود.",
 
     "stocks.inventory": "انبار",
     "stocks.title": "موجودی",
@@ -906,6 +921,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "toast.paymentNumberRequired": "شماره پرداخت الزامی است",
     "toast.paymentRecorded": "پرداخت ثبت شد",
     "toast.failedRecordPayment": "ثبت پرداخت ناموفق بود",
+    "toast.paymentDeleted": "پرداخت حذف شد",
+    "toast.failedDeletePayment": "حذف پرداخت ناموفق بود",
     "toast.selectProduct": "لطفا یک محصول انتخاب کنید",
     "toast.enterNonZero": "تعداد بسته نباید صفر باشد",
     "toast.positiveStock": "تعداد بسته باید عدد مثبت باشد",
@@ -935,6 +952,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "toast.failedCreateBill": "ایجاد بیل ناموفق بود",
     "toast.insufficientStock": "موجودی کافی نیست برای",
     "toast.billUpdated": "بیل به‌روزرسانی شد",
+    "toast.billDeleted": "بیل حذف شد",
+    "toast.failedDeleteBill": "حذف بیل ناموفق بود",
     "toast.failedUpdateBill": "به‌روزرسانی بیل ناموفق بود",
     "toast.paidAmountsRequired": "مقادیر پرداختی افغانی و دلار را وارد کنید",
     "toast.paidNegative": "مقادیر پرداختی نباید منفی باشد",

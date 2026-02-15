@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { useGetPaymentsQuery, useAddPaymentMutation } from "@/redux/api/paymentsApi";
+import { useGetPaymentsQuery, useAddPaymentMutation, useDeletePaymentMutation } from "@/redux/api/paymentsApi";
 import { useGetCustomersQuery } from "@/redux/api/customersApi";
 import { useGetBillsQuery } from "@/redux/api/billsApi";
 import { formatDualDate } from "@/lib/dateFormat";
 import { useLanguage } from "@/components/ui/LanguageProvider";
 import Pagination from "@/components/ui/Pagination";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 type FilterKey = "today" | "yesterday" | "week" | "month" | "all";
 
@@ -34,6 +35,7 @@ export default function PaymentsPage() {
 		useGetCustomersQuery();
 	const { data: bills = [], isLoading: billsLoading } = useGetBillsQuery();
 	const [addPayment, { isLoading: isSaving }] = useAddPaymentMutation();
+	const [deletePayment, { isLoading: isDeleting }] = useDeletePaymentMutation();
 
 	const [filter, setFilter] = useState<FilterKey>("today");
 	const [customerId, setCustomerId] = useState("");
@@ -41,6 +43,7 @@ export default function PaymentsPage() {
 	const [paymentNumber, setPaymentNumber] = useState("");
 	const [amountPaid, setAmountPaid] = useState("");
 	const [page, setPage] = useState(1);
+	const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 	const pageSize = 10;
 
 	const payments = useMemo(() => paymentsResponse?.payments ?? [], [paymentsResponse]);
@@ -133,6 +136,18 @@ export default function PaymentsPage() {
 		} catch (error) {
 			console.error(error);
 			toast.error(t("toast.failedRecordPayment"));
+		}
+	};
+
+	const handleConfirmDelete = async () => {
+		if (!deleteTarget) return;
+		try {
+			await deletePayment(deleteTarget).unwrap();
+			toast.success(t("toast.paymentDeleted"));
+			setDeleteTarget(null);
+		} catch (error) {
+			console.error(error);
+			toast.error(t("toast.failedDeletePayment"));
 		}
 	};
 
@@ -280,8 +295,18 @@ export default function PaymentsPage() {
 											</p>
 											<p className="text-xs text-slate-500">{t("payments.customer")}: {customerName}</p>
 										</div>
-										<div className="text-right text-sm font-semibold text-slate-700">
-											{payment.currency} {toNumber(payment.amountPaid).toLocaleString()}
+										<div className="flex items-center gap-3 text-right">
+											<div className="text-sm font-semibold text-slate-700">
+												{payment.currency} {toNumber(payment.amountPaid).toLocaleString()}
+											</div>
+											<button
+												type="button"
+												onClick={() => setDeleteTarget(payment.id)}
+												disabled={isDeleting}
+												className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-600 transition hover:border-rose-300 disabled:opacity-50"
+											>
+												{t("common.undo")}
+											</button>
 										</div>
 									</div>
 								);
@@ -300,6 +325,17 @@ export default function PaymentsPage() {
 					)}
 				</div>
 			</div>
+
+			<ConfirmDialog
+				open={Boolean(deleteTarget)}
+				title={t("payments.undoTitle")}
+				description={t("payments.undoDescription")}
+				confirmLabel={t("common.undo")}
+				cancelLabel={t("common.cancel")}
+				danger
+				onCancel={() => setDeleteTarget(null)}
+				onConfirm={handleConfirmDelete}
+			/>
 		</section>
 	);
 }

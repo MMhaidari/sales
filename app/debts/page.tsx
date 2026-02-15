@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	DndContext,
 	KeyboardSensor,
@@ -19,8 +19,12 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useGetCustomersQuery } from "@/redux/api/customersApi";
+import {
+	useGetCustomersQuery,
+	useUpdateCustomerOrderMutation,
+} from "@/redux/api/customersApi";
 import { useLanguage } from "@/components/ui/LanguageProvider";
+import toast from "react-hot-toast";
 
 function toNumber(value: string | number | null | undefined) {
 	const parsed = Number(value);
@@ -30,47 +34,45 @@ function toNumber(value: string | number | null | undefined) {
 export default function DebtsPage() {
 	const { t } = useLanguage();
 	const { data: customers = [], isLoading, isError } = useGetCustomersQuery();
+	const [updateCustomerOrder] = useUpdateCustomerOrderMutation();
 	const [orderIds, setOrderIds] = useState<string[]>([]);
+	const [isDraggingRow, setIsDraggingRow] = useState(false);
+	const suppressClickUntilRef = useRef(0);
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
 		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
 	);
 
 	const debtRows = useMemo(() => {
-		return customers
-			.map((customer) => {
-				const debtAFN = toNumber(customer.debtAFN);
-				const debtUSD = toNumber(customer.debtUSD);
-				return {
-					id: customer.id,
-					name: customer.name,
-					debtAFN,
-					debtUSD,
-					total: debtAFN + debtUSD,
-				};
-			})
-			.sort((a, b) => b.total - a.total);
+		return customers.map((customer) => {
+			const debtAFN = toNumber(customer.debtAFN);
+			const debtUSD = toNumber(customer.debtUSD);
+			return {
+				id: customer.id,
+				name: customer.name,
+				debtAFN,
+				debtUSD,
+				total: debtAFN + debtUSD,
+			};
+		});
 	}, [customers]);
 
 	const baseIds = useMemo(() => debtRows.map((row) => row.id), [debtRows]);
 
 	useEffect(() => {
-		if (typeof window === "undefined") return;
-		const stored = window.localStorage.getItem("debtsOrder");
-		const parsed = stored ? JSON.parse(stored) : null;
-		const storedIds = Array.isArray(parsed)
-			? parsed.filter((value) => typeof value === "string")
-			: [];
+		if (baseIds.length === 0) {
+			if (orderIds.length > 0) setOrderIds([]);
+			return;
+		}
 		const merged = [
-			...storedIds.filter((id) => baseIds.includes(id)),
-			...baseIds.filter((id) => !storedIds.includes(id)),
+			...orderIds.filter((id) => baseIds.includes(id)),
+			...baseIds.filter((id) => !orderIds.includes(id)),
 		];
 		const isSame =
 			merged.length === orderIds.length &&
 			merged.every((id, index) => id === orderIds[index]);
 		if (isSame) return;
 		setOrderIds(merged);
-		window.localStorage.setItem("debtsOrder", JSON.stringify(merged));
 	}, [baseIds, orderIds]);
 
 	const orderedRows = useMemo(() => {
@@ -110,27 +112,40 @@ export default function DebtsPage() {
 				{ field: "name", displayName: t("debts.customer") },
 				{ field: "debtAFN", displayName: t("debts.afn") },
 				{ field: "debtUSD", displayName: t("debts.usd") },
-			],
-			style: "table{width:100%;border-collapse:collapse}th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}th{background:#f8fafc}",
+			] as unknown as string[],
+			style:
+				"table{width:100%;border-collapse:collapse}th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}th{background:#f8fafc}",
 		});
 	};
 
-	const handleDragEnd = (event: DragEndEvent) => {
-		if (!event.over) return;
+	const handleDragEnd = async (event: DragEndEvent) => {
+		suppressClickUntilRef.current = Date.now() + 800;
+		if (!event.over) {
+			setIsDraggingRow(false);
+			return;
+		}
 		const activeId = String(event.active.id);
 		const overId = String(event.over.id);
-		if (activeId === overId) return;
+		if (activeId === overId) {
+			setIsDraggingRow(false);
+			return;
+		}
 
-		setOrderIds((prev) => {
-			const oldIndex = prev.indexOf(activeId);
-			const newIndex = prev.indexOf(overId);
-			if (oldIndex === -1 || newIndex === -1) return prev;
-			const next = arrayMove(prev, oldIndex, newIndex);
-			if (typeof window !== "undefined") {
-				window.localStorage.setItem("debtsOrder", JSON.stringify(next));
-			}
-			return next;
-		});
+		const oldIndex = orderIds.indexOf(activeId);
+		const newIndex = orderIds.indexOf(overId);
+		if (oldIndex === -1 || newIndex === -1) return;
+
+		const next = arrayMove(orderIds, oldIndex, newIndex);
+		setOrderIds(next);
+		suppressClickUntilRef.current = Date.now() + 800;
+
+		try {
+			await updateCustomerOrder({ orderedIds: next }).unwrap();
+		} catch (error) {
+			console.error(error);
+			toast.error(t("common.somethingWentWrong"));
+		}
+		setIsDraggingRow(false);
 	};
 
 	return (
@@ -207,6 +222,14 @@ export default function DebtsPage() {
 						<DndContext
 							sensors={sensors}
 							collisionDetection={closestCenter}
+							onDragStart={() => {
+								suppressClickUntilRef.current = Date.now() + 800;
+								setIsDraggingRow(true);
+							}}
+							onDragCancel={() => {
+								suppressClickUntilRef.current = Date.now() + 800;
+								setIsDraggingRow(false);
+							}}
 							onDragEnd={handleDragEnd}
 						>
 							<SortableContext
@@ -215,7 +238,13 @@ export default function DebtsPage() {
 							>
 								<div className="space-y-2">
 									{orderedRows.map((row) => (
-										<SortableDebtRow key={row.id} row={row} t={t} />
+										<SortableDebtRow
+											key={row.id}
+											row={row}
+											t={t}
+											suppressClickUntilRef={suppressClickUntilRef}
+											isDraggingRow={isDraggingRow}
+										/>
 									))}
 								</div>
 							</SortableContext>
@@ -230,9 +259,13 @@ export default function DebtsPage() {
 function SortableDebtRow({
 	row,
 	t,
+	suppressClickUntilRef,
+	isDraggingRow,
 }: {
 	row: { id: string; name: string; debtAFN: number; debtUSD: number };
 	t: (key: string) => string;
+	suppressClickUntilRef: React.MutableRefObject<number>;
+	isDraggingRow: boolean;
 }) {
 	const {
 		attributes,
@@ -250,13 +283,29 @@ function SortableDebtRow({
 	};
 
 	return (
-		<div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+		<div ref={setNodeRef} style={style}>
 			<Link
 				href={`/customers/${row.id}`}
+				onClick={(event) => {
+					if (isDragging || isDraggingRow || Date.now() < suppressClickUntilRef.current) {
+						event.preventDefault();
+						event.stopPropagation();
+					}
+				}}
+				onClickCapture={(event) => {
+					if (Date.now() < suppressClickUntilRef.current) {
+						event.preventDefault();
+						event.stopPropagation();
+					}
+				}}
 				className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 transition hover:border-slate-200 hover:bg-white"
 			>
 				<div className="flex items-center gap-3">
-					<div className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-500">
+					<div
+						className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-500"
+						{...attributes}
+						{...listeners}
+					>
 						::
 					</div>
 					<div>

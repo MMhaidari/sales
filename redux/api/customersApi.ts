@@ -71,6 +71,13 @@ export type PaginatedResponse<T> = {
     page: number;
     pageSize: number;
 };
+export type UpdateCustomerOrderInput = {
+    orderedIds: string[];
+};
+
+export type UpdateCustomerOrderResponse = {
+    success: boolean;
+};
 
 export const customersApi = createApi({
     reducerPath: 'customersApi',
@@ -136,6 +143,17 @@ export const customersApi = createApi({
             }),
             invalidatesTags: (result, error, id) => [{ type: 'Customer', id }],
         }),
+        updateCustomerOrder: builder.mutation<
+            UpdateCustomerOrderResponse,
+            UpdateCustomerOrderInput
+        >({
+            query: (body) => ({
+                url: '/order',
+                method: 'PUT',
+                body,
+            }),
+            invalidatesTags: [{ type: 'Customer', id: 'LIST' }],
+        }),
     }),
 });
 
@@ -146,4 +164,5 @@ export const {
     useAddCustomerMutation,
     useUpdateCustomerMutation,
     useDeleteCustomerMutation,
+    useUpdateCustomerOrderMutation,
 } = customersApi;

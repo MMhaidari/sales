@@ -10,6 +10,12 @@ if (!globalForPrisma.prisma) globalForPrisma.prisma = prisma;
 function handleError(error: unknown) {
   console.error(error);
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Payment number already exists" },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { error: error.message, code: error.code },
       { status: 400 }
@@ -83,6 +89,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Payment number must be digits only" },
         { status: 400 }
+      );
+    }
+
+    const existingPayment = await prisma.payment.findFirst({
+      where: { paymentNumber: normalizedPaymentNumber },
+      select: { id: true },
+    });
+    if (existingPayment) {
+      return NextResponse.json(
+        { error: "Payment number already exists" },
+        { status: 409 }
       );
     }
 
@@ -202,11 +219,18 @@ export async function POST(req: NextRequest) {
     });
 
     const INITIAL_DEBT_NOTE = "Initial debt adjustment";
+    let total = 0;
+    let paid = 0;
     let initialPaid = 0;
-    const billRemaining: { billId: string; remaining: number }[] = [];
 
     for (const bill of bills) {
+      const billPaid =
+        currency === "AFN"
+          ? Number(bill.paidAFN.toString())
+          : Number(bill.paidUSD.toString());
+
       if (bill.note === INITIAL_DEBT_NOTE) {
+        initialPaid += billPaid;
         for (const payment of bill.payments) {
           if (payment.currency === currency) {
             initialPaid += Number(payment.amountPaid.toString());
@@ -215,29 +239,19 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      let total = 0;
-      let paid = 0;
       for (const item of bill.items) {
         if (item.currency === currency) {
           total += Number(item.totalAmount.toString());
         }
       }
+
+      paid += billPaid;
       for (const payment of bill.payments) {
         if (payment.currency === currency) {
           paid += Number(payment.amountPaid.toString());
         }
       }
-
-      const remaining = Math.max(total - paid, 0);
-      if (remaining > 0) {
-        billRemaining.push({ billId: bill.id, remaining });
-      }
     }
-
-    const billRemainingTotal = billRemaining.reduce(
-      (sum, entry) => sum + entry.remaining,
-      0
-    );
 
     const initialDebt =
       currency === "AFN"
@@ -247,7 +261,7 @@ export async function POST(req: NextRequest) {
       ? Math.max(initialDebt - initialPaid, 0)
       : 0;
 
-    const totalRemaining = billRemainingTotal + initialRemaining;
+    const totalRemaining = Math.max(total - paid, 0) + initialRemaining;
 
     if (totalRemaining <= 0) {
       return NextResponse.json(
@@ -263,57 +277,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let amountLeft = parsedAmount;
-    const createInputs: Prisma.PaymentCreateManyInput[] = [];
-
-    for (const entry of billRemaining) {
-      if (amountLeft <= 0) break;
-      const applied = Math.min(entry.remaining, amountLeft);
-      amountLeft -= applied;
-      createInputs.push({
-        billId: entry.billId,
-        paymentNumber: normalizedPaymentNumber,
-        amountPaid: new Prisma.Decimal(applied),
-        currency: currency as Currency,
-        paymentMethod: paymentMethod?.trim() || "Manual",
-        note: typeof note === "string" ? note : null,
-      });
-    }
-
     const created = await prisma.$transaction(async (tx) => {
-      const paymentsCreated: unknown[] = [];
+      const adjustmentBill = await tx.bill.create({
+        data: {
+          customerId: customer.id,
+          status: "PAID",
+          sherkatStock: false,
+          billDate: new Date(),
+          note: "Customer payment adjustment",
+        },
+      });
 
-      for (const data of createInputs) {
-        const payment = await tx.payment.create({ data });
-        paymentsCreated.push(payment);
-      }
+      const payment = await tx.payment.create({
+        data: {
+          billId: adjustmentBill.id,
+          paymentNumber: normalizedPaymentNumber,
+          amountPaid: new Prisma.Decimal(parsedAmount),
+          currency: currency as Currency,
+          paymentMethod: paymentMethod?.trim() || "Manual",
+          note: typeof note === "string" ? note : null,
+        },
+      });
 
-      if (amountLeft > 0) {
-        const adjustmentBill = await tx.bill.create({
-          data: {
-            customerId: customer.id,
-            status: "PARTIAL",
-            sherkatStock: true,
-            billDate: new Date(),
-            note: "Initial debt adjustment",
-          },
-        });
-
-        const adjustmentPayment = await tx.payment.create({
-          data: {
-            billId: adjustmentBill.id,
-            paymentNumber: normalizedPaymentNumber,
-            amountPaid: new Prisma.Decimal(amountLeft),
-            currency: currency as Currency,
-            paymentMethod: paymentMethod?.trim() || "Manual",
-            note: typeof note === "string" ? note : null,
-          },
-        });
-
-        paymentsCreated.push(adjustmentPayment);
-      }
-
-      return paymentsCreated;
+      return [payment];
     });
 
     return NextResponse.json({ payments: created }, { status: 201 });
