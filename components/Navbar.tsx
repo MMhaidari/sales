@@ -6,10 +6,9 @@ import { useLanguage } from "@/components/ui/LanguageProvider";
 
 interface NavbarProps {
   links?: { label: string; href: string }[];
-  rightContent?: React.ReactNode;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ links, rightContent }) => {
+const Navbar: React.FC<NavbarProps> = ({ links }) => {
   const { t } = useLanguage();
   const resolvedLinks =
     links ??
@@ -21,10 +20,11 @@ const Navbar: React.FC<NavbarProps> = ({ links, rightContent }) => {
       { label: t("debts.title"), href: "/debts" },
       { label: t("nav.stocks"), href: "/stocks" },
       { label: t("nav.bills"), href: "/bills" },
-      { label: t("nav.payments"), href: "/payments" },
-      { label: t("nav.reports"), href: "/reports" },
-      { label: t("nav.mandawiReport"), href: "/reports/mandawi" },
-      { label: t("nav.sherkatReport"), href: "/reports/sherkat" },
+        { label: t("nav.payments"), href: "/payments" },
+        { label: t("nav.reports"), href: "/reports" },
+        { label: "Product Report", href: "/reports/product-report" },
+        { label: t("nav.mandawiReport"), href: "/reports/mandawi" },
+        { label: t("nav.sherkatReport"), href: "/reports/sherkat" },
     ];
   return (
     <aside className="flex h-full min-h-screen w-full flex-col overflow-hidden border-r border-slate-200 bg-white/95 backdrop-blur">
