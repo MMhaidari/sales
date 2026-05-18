@@ -20,6 +20,9 @@ export default function ProductReportPage() {
   const { t } = useLanguage();
   const { data: products = [] } = useGetProductsQuery();
   const [productId, setProductId] = useState<string | undefined>(undefined);
+  const [fromDate, setFromDate] = useState(() =>
+    new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString().slice(0, 10)
+  );
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [includeSherkat, setIncludeSherkat] = useState(true);
   const [includeMandawi, setIncludeMandawi] = useState(true);
@@ -44,7 +47,8 @@ export default function ProductReportPage() {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
 
-    const formattedDate = formatDualDate(new Date(toDate).toISOString());
+    const formattedFromDate = formatDualDate(new Date(fromDate).toISOString());
+    const formattedToDate = formatDualDate(new Date(toDate).toISOString());
     const selectedProductName = selectedProduct?.name ?? "-";
 
     const rowsHtml = rows
@@ -69,7 +73,8 @@ export default function ProductReportPage() {
           <div style="font-size:14px;font-weight:700;margin-bottom:8px;">Product Report</div>
           <div style="font-size:12px;color:#475569;line-height:1.6;">
             <div><strong>Product:</strong> ${escapeHtml(selectedProductName)}</div>
-            <div><strong>To date:</strong> ${escapeHtml(formattedDate)}</div>
+            <div><strong>From date:</strong> ${escapeHtml(formattedFromDate)}</div>
+            <div><strong>To date:</strong> ${escapeHtml(formattedToDate)}</div>
             <div><strong>Include Sherkat:</strong> ${includeSherkat ? "Yes" : "No"}</div>
             <div><strong>Include Mandawi:</strong> ${includeMandawi ? "Yes" : "No"}</div>
           </div>
@@ -107,10 +112,15 @@ export default function ProductReportPage() {
       setError("Select a product");
       return;
     }
+    if (new Date(fromDate).getTime() > new Date(toDate).getTime()) {
+      setError("From date must be before or equal to To date");
+      return;
+    }
     setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set("productId", productId);
+      params.set("from", new Date(fromDate).toISOString());
       params.set("to", new Date(toDate).toISOString());
       params.set("includeSherkat", String(includeSherkat));
       params.set("includeMandawi", String(includeMandawi));
@@ -137,7 +147,9 @@ export default function ProductReportPage() {
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-900">Product Report</h1>
         </div>
-        <div className="text-sm text-slate-500">To: {formatDualDate(new Date(toDate).toISOString())}</div>
+        <div className="text-sm text-slate-500">
+          From: {formatDualDate(new Date(fromDate).toISOString())} · To: {formatDualDate(new Date(toDate).toISOString())}
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -153,6 +165,16 @@ export default function ProductReportPage() {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-slate-500">From date</label>
+          <input type="date" className="w-full rounded-md border p-2" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-slate-500">To date</label>
+          <input type="date" className="w-full rounded-md border p-2" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
 
         <div className="space-y-1">
@@ -173,11 +195,6 @@ export default function ProductReportPage() {
               <span className="text-sm">Include</span>
             </label>
           </div>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs text-slate-500">To date</label>
-          <input type="date" className="w-full rounded-md border p-2" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
 
         <div className="flex items-end">
