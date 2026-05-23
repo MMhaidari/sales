@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = req.nextUrl;
     const productId = url.searchParams.get("productId");
+    const from = url.searchParams.get("from");
     const to = url.searchParams.get("to") || new Date().toISOString();
     const includeSherkat = url.searchParams.get("includeSherkat");
     const includeMandawi = url.searchParams.get("includeMandawi");
@@ -29,11 +30,20 @@ export async function GET(req: NextRequest) {
     if (!productId) {
       return NextResponse.json({ error: "productId is required" }, { status: 400 });
     }
+    if (!from) {
+      return NextResponse.json({ error: "from date is required" }, { status: 400 });
+    }
+
+    const fromDate = new Date(from);
+    if (Number.isNaN(fromDate.getTime())) {
+      return NextResponse.json({ error: "Invalid from date" }, { status: 400 });
+    }
 
     const toDate = new Date(to);
     if (Number.isNaN(toDate.getTime())) {
       return NextResponse.json({ error: "Invalid to date" }, { status: 400 });
     }
+    toDate.setHours(23, 59, 59, 999);
 
     const sherkatFilter =
       includeSherkat == null ? undefined : includeSherkat === "true" ? undefined : { sherkatStock: false };
@@ -41,7 +51,7 @@ export async function GET(req: NextRequest) {
       includeMandawi == null ? undefined : includeMandawi === "true" ? undefined : { mandawiCheck: false };
 
     // Build where condition on bill
-    const billWhere: any = { billDate: { lte: toDate } };
+    const billWhere: any = { billDate: { gte: fromDate, lte: toDate } };
     if (sherkatFilter) Object.assign(billWhere, sherkatFilter);
     if (mandawiFilter) Object.assign(billWhere, mandawiFilter);
 

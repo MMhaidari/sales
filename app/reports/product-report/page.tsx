@@ -120,8 +120,8 @@ export default function ProductReportPage() {
     try {
       const params = new URLSearchParams();
       params.set("productId", productId);
-      params.set("from", new Date(fromDate).toISOString());
-      params.set("to", new Date(toDate).toISOString());
+      params.set("from", fromDate);
+      params.set("to", toDate);
       params.set("includeSherkat", String(includeSherkat));
       params.set("includeMandawi", String(includeMandawi));
 
