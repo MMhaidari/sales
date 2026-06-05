@@ -65,6 +65,7 @@ const CreateNewBill: React.FC = () => {
     ]);
     const [bills, setBills] = useState<Bill[]>([]);
     const [printBill, setPrintBill] = useState<Bill | null>(null);
+    const [printBillMode, setPrintBillMode] = useState<"single" | "combined" | null>(null);
     const [isPrinting, setIsPrinting] = useState(false);
 
     const productsById = useMemo(() => {
@@ -319,12 +320,14 @@ const CreateNewBill: React.FC = () => {
     );
 
     useEffect(() => {
-        if (!printBill) return;
+        if (!printBill || !printBillMode) return;
         let cancelled = false;
+
         const runPrint = async () => {
             const { default: printJS } = await import("print-js");
             if (cancelled) return;
             setIsPrinting(true);
+
             const escapeHtml = (value: string) =>
                 value
                     .replace(/&/g, "&amp;")
@@ -358,38 +361,122 @@ const CreateNewBill: React.FC = () => {
                 })
                 .join("");
 
-            const html = `
-                <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a;">
+            const stockRowsHtml = printBill.items
+                .filter((item) => item.numberOfPackages > 0)
+                .map((item, index) => {
+                    const product = productsById.get(item.productId);
+                    return `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${escapeHtml(product?.name ?? t("common.unknown"))}</td>
+                            <td>${item.numberOfPackages}</td>
+                        </tr>
+                    `;
+                })
+                .join("");
+
+            const compact = printBill.items.length >= 20;
+            const compactStyle = compact ? `
+                        <style>
+                            @page { size: A4 landscape; margin: 6mm; }
+                            .compact table { font-size: 10px; }
+                            .compact th, .compact td { padding: 6px 8px; }
+                            .compact .split-half { padding: 8px; }
+                            .compact .brand-title { font-size: 16px; }
+                        </style>
+                    ` : '';
+
+            const billHtml = `
+                <div class="${compact ? 'compact' : ''}" style="background:#f8fbff;border-radius:12px;padding:10px;box-shadow:0 6px 14px rgba(15,23,42,0.04);border:1px solid rgba(59,130,246,0.10);font-size:11px;">
+                    <div style="margin-bottom:8px;">
+                        <div style="font-size:13px;font-weight:700;color:#0f172a;">${escapeHtml(t("brand.title"))}</div>
+                        <div style="font-size:11px;color:#475569;">${escapeHtml(t("brand.subtitle"))}</div>
+                        <div style="font-size:11px;color:#475569;margin-top:4px;">${escapeHtml(t("billPrint.billNumber"))}: ${escapeHtml(printBill.billNumber ?? "--")}</div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                        <div style="padding:8px;background:#eff6ff;border-radius:8px;border:1px solid rgba(99,102,241,0.08);">
+                            <div style="font-size:10px;color:#2563eb;">${escapeHtml(t("billPrint.customer"))}</div>
+                            <div style="font-size:12px;font-weight:700;color:#0f172a;margin-top:4px;">${escapeHtml(customerName)}</div>
+                        </div>
+                        <div style="padding:8px;background:#eff6ff;border-radius:8px;border:1px solid rgba(99,102,241,0.08);">
+                            <div style="font-size:10px;color:#2563eb;">${escapeHtml(t("billPrint.date"))}</div>
+                            <div style="font-size:12px;font-weight:700;color:#0f172a;margin-top:4px;">${escapeHtml(formatDualDate(printBill.billDate))}</div>
+                        </div>
+                    </div>
+                    <table style="width:100%;border-collapse:collapse;margin-top:6px;">
+                        <thead>
+                            <tr>
+                                <th style="border:1px solid rgba(99,102,241,0.08);padding:6px 8px;text-align:left;background:#eaf5ff;color:#0f172a;">${escapeHtml(t("billPrint.item"))}</th>
+                                <th style="border:1px solid rgba(99,102,241,0.08);padding:6px 8px;text-align:right;background:#eaf5ff;color:#0f172a;">${escapeHtml(t("billPrint.packages"))}</th>
+                                <th style="border:1px solid rgba(99,102,241,0.08);padding:6px 8px;text-align:right;background:#eaf5ff;color:#0f172a;">${escapeHtml(t("billPrint.unitPrice"))}</th>
+                                <th style="border:1px solid rgba(99,102,241,0.08);padding:6px 8px;text-align:right;background:#eaf5ff;color:#0f172a;">${escapeHtml(t("billPrint.currency"))}</th>
+                                <th style="border:1px solid rgba(99,102,241,0.08);padding:6px 8px;text-align:right;background:#eaf5ff;color:#0f172a;">${escapeHtml(t("billPrint.total"))}</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                        <div style="border:1px solid rgba(99,102,241,0.12);border-radius:999px;padding:6px 10px;font-size:11px;font-weight:600;">${escapeHtml(t("billPrint.totalAFN"))}: ${escapeHtml(printBill.totalAFN)}</div>
+                        <div style="border:1px solid rgba(99,102,241,0.12);border-radius:999px;padding:6px 10px;font-size:11px;font-weight:600;">${escapeHtml(t("billPrint.totalUSD"))}: ${escapeHtml(printBill.totalUSD)}</div>
+                    </div>
+                </div>
+            `;
+
+            const slipHtml = `
+                <div style="background:#f6f8ff;border-radius:20px;padding:18px;box-shadow:0 12px 28px rgba(15,23,42,0.05);border:1px solid #dbeafe;font-size:11px;">
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#4f46e5;">${escapeHtml(t("billPrint.issuedTo"))}</div>
+                        <div style="font-size:13px;font-weight:700;margin-top:6px;color:#0f172a;">${escapeHtml(customerName)}</div>
+                        <div style="font-size:12px;color:#475569;">${escapeHtml(t("billPrint.billNumber"))}: ${escapeHtml(printBill.billNumber ?? "--")}</div>
+                        <div style="font-size:12px;color:#475569;">${escapeHtml(t("billPrint.issueDate"))}: ${escapeHtml(formatDualDate(printBill.billDate))}</div>
+                    </div>
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#4f46e5;">${escapeHtml(t("billPrint.responsiblePerson"))}</div>
+                        <div style="font-size:13px;font-weight:700;margin-top:6px;color:#0f172a;">______________________________</div>
+                    </div>
+                    <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+                        <thead>
+                            <tr>
+                                <th style="border:1px solid #dbeafe;padding:10px 12px;text-align:left;background:#e0efff;color:#0f172a;">${escapeHtml(t("billPrint.item"))}</th>
+                                <th style="border:1px solid #dbeafe;padding:10px 12px;text-align:right;background:#e0efff;color:#0f172a;">${escapeHtml(t("billPrint.packages"))}</th>
+                            </tr>
+                        </thead>
+                        <tbody>${stockRowsHtml}</tbody>
+                    </table>
+                </div>
+            `;
+
+            const singleHtml = `
+                ${compactStyle}
+                <div class="${compact ? 'compact' : ''}" style="font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; font-size:11px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
                         <div>
-                            <div style="font-size:20px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(t("brand.title"))}</div>
-                            <div style="font-size:12px;color:#64748b;">${escapeHtml(t("brand.subtitle"))}</div>
+                            <div style="font-size:18px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(t("brand.title"))}</div>
+                            <div style="font-size:11px;color:#64748b;">${escapeHtml(t("brand.subtitle"))}</div>
                         </div>
                         <div style="border:1px solid #e2e8f0;padding:4px 10px;border-radius:999px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#334155;">${escapeHtml(t("billPrint.title"))}</div>
                     </div>
-
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
                         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
                             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.customer"))}</div>
-                            <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(customerName)}</div>
+                            <div style="font-size:13px;font-weight:600;margin-top:6px;">${escapeHtml(customerName)}</div>
                             <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.customerId"))}: ${escapeHtml(printBill.customerId ? printBill.customerId.slice(0, 8) : "--")}</div>
                         </div>
                         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
                             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.billNumber"))}</div>
-                            <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(printBill.billNumber ?? "--")}</div>
+                            <div style="font-size:13px;font-weight:600;margin-top:6px;">${escapeHtml(printBill.billNumber ?? "--")}</div>
                             <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.date"))}: ${escapeHtml(formatDualDate(printBill.billDate))}</div>
                         </div>
                     </div>
-
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
                         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
                             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.status"))}</div>
-                            <div style="font-size:14px;font-weight:600;margin-top:6px;">${escapeHtml(printBill.status)}</div>
+                            <div style="font-size:13px;font-weight:600;margin-top:6px;">${escapeHtml(printBill.status)}</div>
                             <div style="font-size:12px;color:#64748b;">${escapeHtml(printBill.sherkatStock ? t("billPrint.sherkatStock") : t("billPrint.systemStock"))}</div>
                         </div>
                         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px;">
                             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.25em;color:#94a3b8;">${escapeHtml(t("billPrint.mandawi"))}</div>
-                            <div style="font-size:14px;font-weight:600;margin-top:6px;">
+                            <div style="font-size:13px;font-weight:600;margin-top:6px;">
                                 ${escapeHtml(
                                     printBill.mandawiCheck
                                         ? printBill.mandawiCheckNumber
@@ -401,7 +488,6 @@ const CreateNewBill: React.FC = () => {
                             <div style="font-size:12px;color:#64748b;">${escapeHtml(t("billPrint.billId"))}: ${escapeHtml(printBill.id.slice(0, 8))}</div>
                         </div>
                     </div>
-
                     <table style="width:100%;border-collapse:collapse;margin-top:12px;">
                         <thead>
                             <tr>
@@ -413,11 +499,8 @@ const CreateNewBill: React.FC = () => {
                                 <th style="border:1px solid #e2e8f0;padding:8px;text-align:left;background:#f8fafc;text-transform:uppercase;letter-spacing:0.2em;font-size:10px;color:#475569;">${escapeHtml(t("billPrint.total"))}</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            ${rowsHtml}
-                        </tbody>
+                        <tbody>${rowsHtml}</tbody>
                     </table>
-
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;">
                         <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.totalAFN"))}: ${escapeHtml(printBill.totalAFN)}</div>
                         <div style="border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">${escapeHtml(t("billPrint.totalUSD"))}: ${escapeHtml(printBill.totalUSD)}</div>
@@ -429,24 +512,64 @@ const CreateNewBill: React.FC = () => {
                 </div>
             `;
 
-            setTimeout(() => {
-                if (cancelled) return;
-              printJS({
-                    printable: html,
-                    type: "raw-html",
-                    });
-                setIsPrinting(false);
+            const combinedHtml = `
+                ${compactStyle}
+                <div class="${compact ? 'compact' : ''}" style="font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; font-size:11px;">
+                    <style>
+                        @page { size: A4 landscape; margin: 10mm; }
+                        .split-page { display: flex; gap: 8px; width: 100%; }
+                        .split-half { flex: 1; border: 1px solid rgba(59,130,246,0.12); border-radius: 12px; padding: 10px; box-sizing: border-box; background:#ffffff; box-shadow:0 8px 20px rgba(15,23,42,0.04); }
+                        .split-half h1 { margin: 0 0 10px 0; font-size: 16px; color: #1d4ed8; }
+                        .split-half table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                        .split-half th, .split-half td { border: 1px solid rgba(99,102,241,0.08); padding: 6px 8px; }
+                        .split-half th { background: #eef2ff; text-transform: uppercase; font-size: 9px; color:#1e3a8a; }
+                        .split-half tbody tr:nth-child(even) { background: #f8fbff; }
+                    </style>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                        <div>
+                            <div style="font-size:18px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#0f172a;">${escapeHtml(t("brand.title"))}</div>
+                            <div style="font-size:11px;color:#475569;">${escapeHtml(t("brand.subtitle"))}</div>
+                        </div>
+                        <div style="font-size:12px;color:#475569;">${escapeHtml(t("billPrint.billNumber"))}: ${escapeHtml(printBill.billNumber ?? "--")}</div>
+                    </div>
+                    <div class="split-page">
+                        <div class="split-half">
+                            <h1>${escapeHtml(t("billPrint.title"))}</h1>
+                            ${billHtml}
+                        </div>
+                        <div class="split-half">
+                            <h1>${escapeHtml(t("billPrint.deliverySlipTitle"))}</h1>
+                            ${slipHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const html = printBillMode === "combined" ? combinedHtml : singleHtml;
+            printJS({ printable: html, type: "raw-html" });
+
+            if (!cancelled) {
                 setPrintBill(null);
-            }, 50);
+                setPrintBillMode(null);
+                setIsPrinting(false);
+            }
         };
+
         runPrint();
         return () => {
             cancelled = true;
         };
-    }, [customers, getItemTotal, printBill, productsById, t]);
+    }, [customers, getItemTotal, printBill, printBillMode, productsById, t]);
 
     const handlePrintBill = (bill: Bill) => {
         if (isPrinting) return;
+        setPrintBillMode("single");
+        setPrintBill(bill);
+    };
+
+    const handlePrintCombinedBill = (bill: Bill) => {
+        if (isPrinting) return;
+        setPrintBillMode("combined");
         setPrintBill(bill);
     };
 
@@ -910,6 +1033,14 @@ const CreateNewBill: React.FC = () => {
                                             className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {t("billPrint.print")}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePrintCombinedBill(bill)}
+                                            disabled={isPrinting}
+                                            className="rounded-full border border-slate-200 bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {t("billPrint.printBillAndSlip")}
                                         </button>
                                     </div>
                                 </div>

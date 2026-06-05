@@ -25,13 +25,14 @@ export function LanguageProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [lang, setLang] = useState<Language>(() => {
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem("lang") as Language | null;
-      if (stored === "fa" || stored === "en") return stored;
+  const [lang, setLang] = useState<Language>(defaultLanguage);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("lang") as Language | null;
+    if (stored === "fa" || stored === "en") {
+      setLang(stored);
     }
-    return defaultLanguage;
-  });
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
